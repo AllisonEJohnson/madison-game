@@ -17,9 +17,12 @@ var happiness := 80.0
 var track_needs := false
 
 var _model: Node3D
+var _animated := false
 var _label: Label3D
 var _emote: Label3D
+var _emote_y := 1.1
 var _emote_time := 0.0
+var _gesture_time := 0.0
 var _hop := 0.0
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
@@ -35,16 +38,19 @@ func setup(pet_config: Dictionary, follow: Node3D, is_mine: bool) -> void:
 	top_level = true
 	_model = PetBuilder.build(config)
 	add_child(_model)
+	_animated = PetBuilder.play_clip(_model, "Idle")
+	var top := Art.bounds(_model).end.y
+	_emote_y = top + 0.5
 	_label = Label3D.new()
 	_label.text = config["name"]
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.position = Vector3(0, 0.85, 0)
+	_label.position = Vector3(0, top + 0.25, 0)
 	_label.pixel_size = 0.004
 	_label.outline_size = 8
 	add_child(_label)
 	_emote = Label3D.new()
 	_emote.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_emote.position = Vector3(0, 1.1, 0)
+	_emote.position = Vector3(0, _emote_y, 0)
 	_emote.pixel_size = 0.005
 	_emote.outline_size = 10
 	_emote.modulate = Color("ffe066")
@@ -63,7 +69,7 @@ func _process(delta: float) -> void:
 	_follow(delta)
 	if _emote.visible:
 		_emote_time -= delta
-		_emote.position.y = 1.1 + (1.5 - _emote_time) * 0.2
+		_emote.position.y = _emote_y + (1.5 - _emote_time) * 0.2
 		if _emote_time <= 0.0:
 			_emote.visible = false
 	if track_needs:
@@ -92,8 +98,8 @@ func _follow(delta: float) -> void:
 	var step := target - global_position
 	step.y = 0.0
 	var moving := step.length() > 0.05
+	var speed := SPEED if to_owner.length() > FOLLOW_DISTANCE else 1.2
 	if moving:
-		var speed := SPEED if to_owner.length() > FOLLOW_DISTANCE else 1.2
 		var move := step.normalized() * minf(speed * delta, step.length())
 		global_position += move
 		rotation.y = lerp_angle(rotation.y, atan2(move.x, move.z), 10.0 * delta)
@@ -103,7 +109,14 @@ func _follow(delta: float) -> void:
 	global_position.y = lerpf(global_position.y, owner_pos.y, 10.0 * delta)
 	if to_owner.length() > 25.0:
 		global_position = owner_pos # Teleport if left far behind.
-	_model.position.y = absf(sin(_hop)) * 0.08 if moving else 0.0
+	if _animated:
+		_gesture_time -= delta
+		if moving:
+			PetBuilder.play_clip(_model, "Run" if speed > 2.0 else "Walk")
+		elif _gesture_time <= 0.0:
+			PetBuilder.play_clip(_model, "Idle")
+	else:
+		_model.position.y = absf(sin(_hop)) * 0.08 if moving else 0.0
 
 
 func feed() -> void:
@@ -122,6 +135,8 @@ func show_emote(text: String) -> void:
 	_emote.text = text
 	_emote.visible = true
 	_emote_time = 1.5
+	if _animated and PetBuilder.play_clip(_model, ["Gesture", "Sit"], false):
+		_gesture_time = 4.0
 
 
 func save_state() -> Dictionary:

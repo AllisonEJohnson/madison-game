@@ -55,8 +55,11 @@ func _ready() -> void:
 	_build.layout_edited.connect(_submit_house)
 	_hud.item_selected.connect(func(id):
 		_build.select_item(id)
-		_hud.set_build_selection(id, _build.item_color))
+		_hud.set_build_selection(id, _build.item_color, _build.item_style))
 	_hud.color_changed.connect(_build.set_color)
+	_hud.style_stepped.connect(func(step):
+		_build.step_style(step)
+		_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style))
 
 	Net.status_changed.connect(_hud.set_status)
 	Net.connection_ready.connect(_on_connection_ready)
@@ -252,6 +255,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("build_mode"):
 		_toggle_build()
+	elif event.is_action_pressed("build_style") and _build.active:
+		_build.step_style(1)
+		_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style)
 	elif event.is_action_pressed("quick_chat"):
 		_hud.open_quick_chat()
 	elif event.is_action_pressed("go_home"):
@@ -281,7 +287,7 @@ func _toggle_build() -> void:
 		return
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)
-	_hud.set_build_selection(_build.item_id, _build.item_color)
+	_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style)
 
 
 func _process(delta: float) -> void:
@@ -304,54 +310,7 @@ func _build_environment() -> void:
 	env.environment = Lighting.environment()
 	add_child(env)
 	add_child(Lighting.sun())
-
 	var ground := Node3D.new()
 	ground.name = "Ground"
 	add_child(ground)
-	MeshUtil.box(ground, Vector3(140, 1, 140), Color("4f9442"), Vector3(0, -0.5, 0))
-	MeshUtil.collider(ground, Vector3(140, 1, 140), Vector3(0, -0.5, 0))
-	# Roads in front of each row of plots, and one through the plaza.
-	var road := Color("c2b08a")
-	for z in [-15.5, 15.5]:
-		MeshUtil.box(ground, Vector3(74, 0.02, 3.5), road, Vector3(0, 0.01, z))
-	MeshUtil.box(ground, Vector3(3.5, 0.02, 31), road, Vector3(0, 0.01, 0))
-	# Plaza with a fountain.
-	MeshUtil.cylinder(ground, 9, 9, 0.04, Color("d6bf96"), Vector3(0, 0.02, 0))
-	MeshUtil.cylinder(ground, 3.2, 3.4, 0.6, Color("b0a898"), Vector3(0, 0.3, 0))
-	MeshUtil.cylinder(ground, 2.9, 2.9, 0.62, Color(0.35, 0.65, 0.95, 0.85), Vector3(0, 0.32, 0))
-	MeshUtil.cylinder(ground, 0.35, 0.5, 1.8, Color("b0a898"), Vector3(0, 0.9, 0))
-	MeshUtil.sphere(ground, 0.5, Color(0.45, 0.75, 1.0, 0.8), Vector3(0, 2.0, 0))
-	var fountain_body := StaticBody3D.new()
-	var shape := CollisionShape3D.new()
-	var cyl := CylinderShape3D.new()
-	cyl.radius = 3.4
-	cyl.height = 0.6
-	shape.shape = cyl
-	shape.position.y = 0.3
-	fountain_body.add_child(shape)
-	ground.add_child(fountain_body)
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 1234 # Same trees for everyone.
-	var placed := 0
-	while placed < 60:
-		var p := Vector3(rng.randf_range(-66, 66), 0, rng.randf_range(-66, 66))
-		var in_plots := absf(p.x) < 40.0 and absf(p.z) > 11.0 and absf(p.z) < 34.0
-		var near_center := absf(p.x) < 14.0 and absf(p.z) < 14.0
-		if in_plots or near_center or (absf(p.x) < 40.0 and absf(p.z) < 18.0 and absf(absf(p.z) - 15.5) < 3.0):
-			continue
-		_tree(ground, p, rng)
-		placed += 1
-
-
-func _tree(parent: Node3D, pos: Vector3, rng: RandomNumberGenerator) -> void:
-	var t := Node3D.new()
-	t.position = pos
-	var s := rng.randf_range(0.8, 1.4)
-	t.scale = Vector3(s, s, s)
-	parent.add_child(t)
-	MeshUtil.cylinder(t, 0.18, 0.25, 1.6, Color("7a5230"), Vector3(0, 0.8, 0))
-	var leaf := Color.from_hsv(rng.randf_range(0.25, 0.38), 0.6, rng.randf_range(0.45, 0.7))
-	MeshUtil.sphere(t, 1.1, leaf, Vector3(0, 2.3, 0))
-	MeshUtil.sphere(t, 0.8, leaf.lightened(0.1), Vector3(0.4, 2.9, 0.2))
-	MeshUtil.collider(t, Vector3(0.5, 2.0, 0.5), Vector3(0, 1.0, 0))
+	Scenery.build(ground)

@@ -17,6 +17,7 @@ var _message: Label
 var _port: SpinBox
 var _address: LineEdit
 var _controls := {} # key -> control, to refresh after Randomize
+var _pet_looks: VBoxContainer # coat or color rows, rebuilt when the species changes
 
 
 func _ready() -> void:
@@ -56,6 +57,7 @@ func _handle_command_line() -> void:
 			shot.path = arg.trim_prefix("--screenshot=")
 			if "--shot-build" in args:
 				shot.press_actions.assign(["go_home", "build_mode"])
+				shot.look_down = true
 			get_tree().root.add_child(shot)
 	for arg in args:
 		if arg == "--host":
@@ -322,15 +324,32 @@ func _pet_tab() -> Control:
 	box.add_theme_constant_override("separation", 6)
 	var pet: Dictionary = _profile["pet"]
 	box.add_child(_heading("Kind of pet"))
-	box.add_child(_option(PetBuilder.SPECIES, pet["species"], func(i): _set_pet("species", i)))
+	box.add_child(_option(PetBuilder.SPECIES, pet["species"], func(i):
+		_set_pet("species", i)
+		_fill_pet_looks()))
 	box.add_child(_heading("Pet name"))
 	var names := _option(SafeNames.PET_NAMES, maxi(SafeNames.PET_NAMES.find(pet["name"]), 0),
 			func(i): _set_pet("name", SafeNames.PET_NAMES[i]))
 	box.add_child(names)
-	for row in [["Fur / feather color", "color"], ["Belly & ear color", "accent"], ["Collar color", "collar"]]:
-		box.add_child(_heading(row[0]))
-		box.add_child(_color_row(pet, row[1], CLOTH_COLORS + ["e8a35a", "fff3e0", "c49a6c"], true))
+	_pet_looks = VBoxContainer.new()
+	_pet_looks.add_theme_constant_override("separation", 6)
+	box.add_child(_pet_looks)
+	_fill_pet_looks()
 	return box
+
+
+## Pets with a model choose a coat; the shape-built ones choose colors.
+func _fill_pet_looks() -> void:
+	for child in _pet_looks.get_children():
+		child.free()
+	var pet: Dictionary = _profile["pet"]
+	if PetBuilder.has_art(pet):
+		_pet_looks.add_child(_heading("Coat"))
+		_pet_looks.add_child(_option(PetBuilder.coat_names(pet), pet["coat"], func(i): _set_pet("coat", i)))
+		return
+	for row in [["Fur / feather color", "color"], ["Belly & ear color", "accent"], ["Collar color", "collar"]]:
+		_pet_looks.add_child(_heading(row[0]))
+		_pet_looks.add_child(_color_row(pet, row[1], CLOTH_COLORS + ["e8a35a", "fff3e0", "c49a6c"], true))
 
 
 func _heading(text: String) -> Label:
@@ -396,6 +415,8 @@ func _set_avatar(key: String, value: Variant) -> void:
 
 func _set_pet(key: String, value: Variant) -> void:
 	_profile["pet"][key] = value
+	# Keeps the coat in range for the new species (the profile also holds needs).
+	_profile["pet"]["coat"] = PetBuilder.sanitize(_profile["pet"])["coat"]
 	GameState.save_profile()
 	_rebuild_preview()
 

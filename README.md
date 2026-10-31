@@ -34,7 +34,7 @@ To play across a home network, the host shares their local IP address and allows
 | Right mouse drag / wheel | Look around / zoom |
 | F / G | Feed / play with your pet |
 | T | Quick chat (preset phrases) |
-| B | Build mode (left click place, right click remove, R rotate) |
+| B | Build mode (left click place, right click remove, R rotate, E change style) |
 | H | Go to your home |
 | Esc | Leave the world |
 
@@ -44,14 +44,22 @@ To play across a home network, the host shares their local IP address and allows
   5 eyebrow styles, 4 noses, 6 mouths, blush and freckles, 4 glasses styles; 10 hair styles with any color;
   5 tops, 4 bottoms, 3 shoes, each with its own colors; 9 hats and hair clips; backpacks, capes and wings.
   Every color has kid-friendly swatches plus a full color picker. "Surprise me" randomizes everything.
-- **Pets**: cat, dog, bunny, dragon or bird with three custom colors and a name. Pets follow you, wander
-  when you stand still, react when fed or played with, and have fullness and happiness that slowly drop.
-- **Houses**: each player gets a 12×12 plot with a starter house. Build mode places floors, walls,
-  windows, doorways, fences and 10 furniture pieces on a grid, each in any color. Homes save automatically.
+- **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
+  each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
+  with, and have fullness and happiness that slowly drop.
+- **Houses**: each player gets a 12×12 plot with a furnished starter house. Build mode places floors,
+  walls, windows, doorways and fences in any color, and 18 kinds of furniture (beds, sofas, a fridge, a
+  bathtub, an arcade machine and more), most in several styles. Homes save automatically.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
 - **Kid safety**: no free-text chat or typed names. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kid-safety).
 
-All art is built from simple shapes in code, so there are no asset files to manage yet.
+Furniture, pets and trees use licensed models from a private repo (see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs, using simple shapes.
+To get them, clone that repo into an `itHappy` folder here before opening the project:
+
+```sh
+git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
+```
 
 ## Developer helpers
 

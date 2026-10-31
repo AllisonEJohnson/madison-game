@@ -2,6 +2,7 @@ class_name House
 extends Node3D
 ## One player's plot: a square grid of cells holding floors, walls and objects.
 ## The node sits at the plot center; cell (0, 0) is the plot's local -X/-Z corner.
+## Layout items are {"id", "x", "z", "r" rotation, "c" paint color, "s" style}.
 
 const PLOT_SIZE := 12
 const MAX_ITEMS := 600
@@ -61,29 +62,42 @@ static func sanitize_layout(data: Variant) -> Array:
 		var c := str(item.get("c", ""))
 		if not Color.html_is_valid(c):
 			c = FurnitureCatalog.ITEMS[id]["color"]
-		var clean := {"id": id, "x": x, "z": z, "r": posmod(r, 4), "c": Color.html(c).to_html(false)}
-		var key := _slot_key(clean)
-		if seen.has(key):
+		var s := int(item.get("s", 0)) if (item.get("s") is int or item.get("s") is float) else 0
+		s = clampi(s, 0, maxi(FurnitureCatalog.style_count(id) - 1, 0))
+		var clean := {"id": id, "x": x, "z": z, "r": posmod(r, 4), "c": Color.html(c).to_html(false), "s": s}
+		var keys := _slot_keys(clean)
+		if keys.is_empty() or keys.any(func(k): return seen.has(k)):
 			continue
-		seen[key] = true
+		for k in keys:
+			seen[k] = true
 		out.append(clean)
 	return out
 
 
-## Items on the same layer in the same cell replace each other; walls also key on edge.
-static func _slot_key(item: Dictionary) -> String:
+## Items on the same layer in the same cell replace each other; walls also key
+## on edge, and big objects take every cell they cover. Empty if off the plot.
+static func _slot_keys(item: Dictionary) -> Array:
 	var layer := FurnitureCatalog.layer(item["id"])
-	var suffix := ":%d" % item["r"] if layer == "wall" else ""
-	return "%s:%d:%d%s" % [layer, item["x"], item["z"], suffix]
+	var keys := []
+	for cell in FurnitureCatalog.cells(item["id"], item["x"], item["z"], item["r"]):
+		if cell.x < 0 or cell.y < 0 or cell.x >= PLOT_SIZE or cell.y >= PLOT_SIZE:
+			return []
+		keys.append("%s:%d:%d" % [layer, cell.x, cell.y])
+	if layer == "wall":
+		keys[0] += ":%d" % item["r"]
+	return keys
 
 
-func place(id: String, x: int, z: int, r: int, color_hex: String) -> bool:
-	if not FurnitureCatalog.ITEMS.has(id) or x < 0 or z < 0 or x >= PLOT_SIZE or z >= PLOT_SIZE:
+func place(id: String, x: int, z: int, r: int, color_hex: String, style := 0) -> bool:
+	if not FurnitureCatalog.ITEMS.has(id):
 		return false
-	var item := {"id": id, "x": x, "z": z, "r": posmod(r, 4), "c": color_hex}
-	var key := _slot_key(item)
+	var item := {"id": id, "x": x, "z": z, "r": posmod(r, 4), "c": color_hex,
+		"s": clampi(style, 0, maxi(FurnitureCatalog.style_count(id) - 1, 0))}
+	var keys := _slot_keys(item)
+	if keys.is_empty():
+		return false
 	for i in range(layout.size() - 1, -1, -1):
-		if _slot_key(layout[i]) == key:
+		if _slot_keys(layout[i]).any(func(k): return k in keys):
 			layout.remove_at(i)
 	if layout.size() >= MAX_ITEMS:
 		return false
@@ -97,7 +111,9 @@ func remove_at(x: int, z: int) -> bool:
 	for wanted in ["object", "wall", "floor"]:
 		for i in range(layout.size() - 1, -1, -1):
 			var item: Dictionary = layout[i]
-			if item["x"] == x and item["z"] == z and FurnitureCatalog.layer(item["id"]) == wanted:
+			if FurnitureCatalog.layer(item["id"]) != wanted:
+				continue
+			if Vector2i(x, z) in FurnitureCatalog.cells(item["id"], item["x"], item["z"], item["r"]):
 				layout.remove_at(i)
 				_rebuild()
 				return true
@@ -106,6 +122,11 @@ func remove_at(x: int, z: int) -> bool:
 
 func cell_center(x: int, z: int) -> Vector3:
 	return Vector3(x + 0.5 - PLOT_SIZE / 2.0, 0.0, z + 0.5 - PLOT_SIZE / 2.0)
+
+
+## Where an item's node goes: the middle of everything it covers.
+func item_position(id: String, x: int, z: int, r: int) -> Vector3:
+	return cell_center(x, z) + FurnitureCatalog.center_offset(id, r)
 
 
 ## Converts a world position to a grid cell, or (-1, -1) when off the plot.
@@ -121,7 +142,7 @@ func _rebuild() -> void:
 	for child in _items_root.get_children():
 		child.queue_free()
 	for item in layout:
-		var node := FurnitureCatalog.build(item["id"], item["c"])
-		node.position = cell_center(item["x"], item["z"])
+		var node := FurnitureCatalog.build(item["id"], item["c"], true, item.get("s", 0))
+		node.position = item_position(item["id"], item["x"], item["z"], item["r"])
 		node.rotation_degrees.y = 90 * item["r"]
 		_items_root.add_child(node)

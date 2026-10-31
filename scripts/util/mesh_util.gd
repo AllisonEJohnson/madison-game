@@ -86,16 +86,20 @@ static func collider(parent: Node3D, size: Vector3, pos: Vector3) -> void:
 
 
 ## Makes every mesh under `root` see-through, for build-mode ghost previews.
-static func make_ghost(root: Node, tint: Color) -> void:
+## With `keep_look` the meshes keep their own colors instead of the tint.
+static func make_ghost(root: Node, tint: Color, keep_look := false) -> void:
 	for child in root.get_children():
 		if child is MeshInstance3D:
-			var m := StandardMaterial3D.new()
-			m.albedo_color = tint
-			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-			child.material_override = m
+			if keep_look:
+				child.transparency = 0.35
+			else:
+				var m := StandardMaterial3D.new()
+				m.albedo_color = tint
+				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				child.material_override = m
 			child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		make_ghost(child, tint)
+		make_ghost(child, tint, keep_look)
 
 
 static func hex(value: Variant, fallback := Color.WHITE) -> Color:

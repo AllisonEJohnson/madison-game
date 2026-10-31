@@ -5,6 +5,7 @@ extends CanvasLayer
 signal phrase_chosen(index: int)
 signal item_selected(id: String)
 signal color_changed(color: Color)
+signal style_stepped(step: int)
 signal build_toggled
 signal leave_pressed
 
@@ -17,7 +18,10 @@ var _pet_title: Label
 var _fullness: ProgressBar
 var _happiness: ProgressBar
 var _build_panel: PanelContainer
+var _color_row: HBoxContainer
 var _color_button: ColorPickerButton
+var _style_row: HBoxContainer
+var _style_label: Label
 var _item_buttons := {}
 var _phrase_menu: PopupMenu
 
@@ -98,7 +102,7 @@ func _build_build_panel(root: Control) -> void:
 	var box := VBoxContainer.new()
 	_build_panel.add_child(box)
 	var title := Label.new()
-	title.text = "BUILD MODE  ·  Left click place  ·  Right click remove  ·  R rotate  ·  B done"
+	title.text = "BUILD MODE  ·  Left click place  ·  Right click remove  ·  R rotate  ·  E style  ·  B done"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 	var grid := GridContainer.new()
@@ -112,17 +116,33 @@ func _build_build_panel(root: Control) -> void:
 		b.pressed.connect(func(): item_selected.emit(id))
 		grid.add_child(b)
 		_item_buttons[id] = b
-	var color_row := HBoxContainer.new()
-	color_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(color_row)
+	_color_row = HBoxContainer.new()
+	_color_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_color_row)
 	var color_label := Label.new()
 	color_label.text = "Paint color:"
-	color_row.add_child(color_label)
+	_color_row.add_child(color_label)
 	_color_button = ColorPickerButton.new()
 	_color_button.custom_minimum_size = Vector2(80, 28)
 	_color_button.edit_alpha = false
 	_color_button.color_changed.connect(func(c): color_changed.emit(c))
-	color_row.add_child(_color_button)
+	_color_row.add_child(_color_button)
+	# Items with models pick a style instead of a paint color.
+	_style_row = HBoxContainer.new()
+	_style_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(_style_row)
+	for step in [-1, 1]:
+		var arrow := Button.new()
+		arrow.text = "<" if step < 0 else ">"
+		arrow.focus_mode = Control.FOCUS_NONE
+		arrow.custom_minimum_size = Vector2(36, 28)
+		arrow.pressed.connect(func(): style_stepped.emit(step))
+		_style_row.add_child(arrow)
+		if step < 0:
+			_style_label = Label.new()
+			_style_label.custom_minimum_size.x = 110
+			_style_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_style_row.add_child(_style_label)
 
 
 func _panel(root: Control, preset: int, offset: Vector2) -> PanelContainer:
@@ -199,7 +219,11 @@ func show_build(active: bool) -> void:
 	_build_panel.visible = active
 
 
-func set_build_selection(id: String, color: Color) -> void:
+func set_build_selection(id: String, color: Color, style := 0) -> void:
 	for key in _item_buttons:
 		_item_buttons[key].button_pressed = key == id
 	_color_button.color = color
+	var styled := FurnitureCatalog.has_art(id)
+	_color_row.visible = not styled
+	_style_row.visible = styled
+	_style_label.text = "Style %d of %d" % [style + 1, FurnitureCatalog.style_count(id)]

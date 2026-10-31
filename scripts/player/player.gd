@@ -191,6 +191,12 @@ func set_camera_yaw(value: float) -> void:
 	_yaw = value
 
 
+## Tilts and pulls back the camera, within the same limits as the mouse.
+func set_camera_view(pitch: float, distance: float) -> void:
+	_pitch = clampf(pitch, -1.2, 0.3)
+	_arm.spring_length = clampf(distance, 2.0, 14.0)
+
+
 ## Shows a speech bubble. Only called with preset phrases (see SafeNames).
 func say(text: String) -> void:
 	_bubble.text = text

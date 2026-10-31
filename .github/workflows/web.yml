@@ -23,6 +23,10 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Read access to the private art repo. Without it (for example in a
+      # fork) the game is built with its simple shape models instead.
+      ART_REPO_TOKEN: ${{ secrets.ART_REPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +56,25 @@ jobs:
 
       - name: Import project
         run: ~/godot/godot --headless --import
+
+      # The paid models can't be shared as files, so they live in a private
+      # repo and only reach players inside the exported game.
+      - name: Check out the licensed art
+        if: env.ART_REPO_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          repository: AllisonEJohnson/madison-game-art
+          token: ${{ env.ART_REPO_TOKEN }}
+          path: itHappy
+          persist-credentials: false
+
+      # Keeps only the models the game uses (about 15 MB of 260 MB), then
+      # imports them. The first import above made the class list it needs.
+      - name: Drop unused art and import the rest
+        if: env.ART_REPO_TOKEN != ''
+        run: |
+          ~/godot/godot --headless -s scripts/dev/prune_art.gd
+          ~/godot/godot --headless --import
 
       - name: Export web build
         run: |

@@ -1,8 +1,31 @@
 class_name PetBuilder
 extends RefCounted
-## Builds pet models from a small config: species, colors, and a collar.
+## Builds pet models from a small config: species, coat, colors, and a collar.
+## Species with a licensed model pick it by coat; the others (and every species
+## when the art isn't installed) are built from shapes using the colors.
 
 const SPECIES := ["Cat", "Dog", "Bunny", "Dragon", "Bird"]
+const ART_DIR := "Animals/prefabs/assets/animals/domectic_animals/"
+## Coats per species: [name, model, scale]. The models are life-size, so the
+## big dogs are shrunk and the small ones grown a little to read well in play.
+const COATS := {
+	"Cat": [
+		["White", "cat/cat_01", 1.3], ["Gray tabby", "cat/cat_02", 1.3],
+		["Tuxedo", "cat/cat_03", 1.3], ["Ginger", "cat/cat_04", 1.3],
+		["White kitten", "kitty/kitty_01", 1.65], ["Gray kitten", "kitty/kitty_02", 1.65],
+		["Peach kitten", "kitty/kitty_03", 1.65], ["Black kitten", "kitty/kitty_04", 1.65],
+	],
+	"Dog": [
+		["Husky", "dog/dog_01", 0.8], ["Silver", "dog/dog_02", 0.8],
+		["Brown", "dog/dog_03", 0.8], ["Snowy", "dog/dog_04", 0.8],
+		["Smoky", "dog/dog_05", 0.8], ["Black", "dog/dog_06", 0.8],
+	],
+	"Bird": [
+		["Pigeon", "pigeon/pigeon_01", 1.7], ["Dark pigeon", "pigeon/pigeon_02", 1.7],
+		["White dove", "pigeon/pigeon_03", 1.7], ["Chick", "chick/chick_01", 2.5],
+		["Duck", "duck/duck_01", 1.1],
+	],
+}
 const SOUNDS := {
 	"Cat": ["Mew!", "Purr...", "Mrrp?"],
 	"Dog": ["Woof!", "Arf arf!", "*wags*"],
@@ -13,7 +36,7 @@ const SOUNDS := {
 
 
 static func default_config() -> Dictionary:
-	return {"species": 0, "name": "Biscuit", "color": "e8a35a", "accent": "fff3e0", "collar": "e04848"}
+	return {"species": 0, "coat": 3, "name": "Biscuit", "color": "e8a35a", "accent": "fff3e0", "collar": "e04848"}
 
 
 static func sanitize(config: Variant) -> Dictionary:
@@ -22,6 +45,9 @@ static func sanitize(config: Variant) -> Dictionary:
 		return out
 	if config.get("species") is int or config.get("species") is float:
 		out["species"] = clampi(int(config["species"]), 0, SPECIES.size() - 1)
+	var coat = config.get("coat", out["coat"])
+	var last_coat := maxi(coat_names(out).size() - 1, 0)
+	out["coat"] = clampi(int(coat), 0, last_coat) if (coat is int or coat is float) else 0
 	for key in ["color", "accent", "collar"]:
 		var v = config.get(key)
 		if v is String and Color.html_is_valid(v):
@@ -34,11 +60,42 @@ static func species_name(config: Dictionary) -> String:
 	return SPECIES[int(config.get("species", 0))]
 
 
-## Returns a Node3D with its origin on the ground, facing +Z.
+static func coat_names(config: Dictionary) -> Array:
+	return COATS.get(species_name(config), []).map(func(coat): return coat[0])
+
+
+## True when this pet shows a licensed model, so its colors don't apply.
+static func has_art(config: Dictionary) -> bool:
+	return _coat_path(config) != "" and Art.has(_coat_path(config))
+
+
+static func art_paths() -> Array:
+	var out := []
+	for species in COATS:
+		for coat in COATS[species]:
+			out.append(ART_DIR + coat[1])
+	return out
+
+
+static func _coat_path(config: Dictionary) -> String:
+	var coats: Array = COATS.get(species_name(config), [])
+	if coats.is_empty():
+		return ""
+	return ART_DIR + coats[clampi(int(config.get("coat", 0)), 0, coats.size() - 1)][1]
+
+
+## Returns a Node3D with its origin on the ground, facing +Z. A licensed model
+## comes with an AnimationPlayer, already playing its idle loop.
 static func build(config: Dictionary) -> Node3D:
 	config = sanitize(config)
 	var root := Node3D.new()
 	root.name = "PetModel"
+	var model := Art.instance(_coat_path(config)) if _coat_path(config) != "" else null
+	if model:
+		model.scale = Vector3.ONE * float(COATS[species_name(config)][config["coat"]][2])
+		root.add_child(model)
+		play_clip(root, "Idle")
+		return root
 	var c := MeshUtil.hex(config["color"])
 	var accent := MeshUtil.hex(config["accent"])
 	var collar := MeshUtil.hex(config["collar"])
@@ -98,6 +155,23 @@ static func build(config: Dictionary) -> Node3D:
 				MeshUtil.cylinder(root, 0.0, 0.025, 0.06, accent, Vector3(0, 0.42 - i * 0.02, 0.05 - i * 0.1))
 			MeshUtil.cylinder(root, 0.01, 0.06, 0.4, c, Vector3(0, 0.22, -0.38), Vector3(-75, 0, 0))
 	return root
+
+
+## Plays the model's clip whose name ends with one of `suffixes` (e.g. "Walk"
+## finds "Cat_Walk"). Returns false for shape models, which have no clips.
+static func play_clip(model: Node3D, suffixes: Variant, loop := true, blend := 0.25) -> bool:
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if not player:
+		return false
+	for suffix in (suffixes if suffixes is Array else [suffixes]):
+		for clip in player.get_animation_list():
+			if clip.ends_with("_" + suffix):
+				# The pack's clips are all set to play once.
+				player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+				if player.current_animation != clip:
+					player.play(clip, blend)
+				return true
+	return false
 
 
 static func _build_bird(root: Node3D, c: Color, accent: Color, collar: Color, dark: Color) -> void:
