@@ -12,6 +12,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameState="*res://autoload/game_state.gd"
+Progress="*res://autoload/progress.gd"
 Net="*res://autoload/net.gd"
 Thumbs="*res://autoload/thumbs.gd"
 

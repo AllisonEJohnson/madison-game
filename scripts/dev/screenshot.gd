@@ -10,7 +10,11 @@ extends Node
 ## "shopcat:<category id>", "shoppick:<shop key>" (shows one item up close), "build:<id>/<style>"
 ## (picks a piece in build mode), "chase" (starts Star Chase), "chasedone:<stars>" (shows the
 ## result card), "prompt" (shows the nearby card for the zone you stand in); in the menu "tab:<n>",
-## "part:<n>", "try:<option>/<index>" (tries on a choice) or "names".
+## "part:<n>", "try:<option>/<index>" (tries on a choice) or "names". For levels: "levels" (opens
+## the level card), "levelup:<level>" (shows that level's level-up card) and
+## "camera:<x>/<y>/<z>/<look x>/<look y>/<look z>" (a free camera, for views from above); "nohud"
+## hides the interface; "closeadmin" closes the admin console; "sky[:<yaw>[/<pitch>/<distance>]]" goes
+## up to the Sky Garden.
 ## "sleep:<seconds>" pauses before the next step.
 ## --shot-wait=<seconds> waits longer before the picture (default 5), for pictures to render.
 
@@ -112,8 +116,40 @@ func _ui_step(step: String) -> void:
 			scene.local_player.set_camera_yaw(0.0)
 		"chase":
 			scene._glade.chase.start()
+		"sky":
+			# Goes up to the Sky Garden as if through its portal, and turns the camera.
+			scene._travel(scene.local_player, scene._sky.portal)
+			if arg != "":
+				var v := arg.split("/")
+				scene.local_player.set_camera_yaw(deg_to_rad(float(v[0])))
+				if v.size() >= 3:
+					scene.local_player.set_camera_view(float(v[1]), float(v[2]))
+		"closeadmin":
+			for console in scene.find_children("*", "AdminConsole", false, false):
+				if console._panel.visible:
+					console.toggle()
+		"nohud":
+			hud.visible = false
+			hud._pending_levels.clear()
+		"levels":
+			hud.open_level_card()
+		"levelup":
+			var level := int(arg)
+			hud._pending_levels.clear()
+			hud._level_up.show_level(level, Levels.rewards(level))
+			if not hud._level_up.visible:
+				hud._show_only(hud._level_up)
+			hud._level_up.burst(hud._root)
+		"camera":
+			var v := Array(arg.split("/")).map(func(n): return float(n))
+			var cam := Camera3D.new()
+			scene.add_child(cam)
+			cam.position = Vector3(v[0], v[1], v[2])
+			cam.look_at(Vector3(v[3], v[4], v[5]), Vector3.UP if absf(v[1] - v[4]) < 1.0 or absf(v[0] - v[3]) + absf(v[2] - v[5]) > 0.1 else Vector3.FORWARD)
+			cam.make_current()
 		"chasedone":
-			hud.show_game_result(int(arg), StarChase.reward_for(int(arg)), true)
+			hud.show_game_result(int(arg), StarChase.reward_for(int(arg)), true,
+					int(arg) * int(Levels.SOURCES["star"]["xp"]))
 		"try":
 			var v := arg.split("/")
 			scene._on_option_chosen(v[0], int(v[1]))

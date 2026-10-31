@@ -100,6 +100,14 @@ var _result_reward: Label
 var _result_best: Control
 var _gain: Label
 var _gain_tween: Tween
+var _result_xp: Label
+var _level_badge: LevelBadge
+var _level_card: LevelCard
+var _level_up: LevelUpCard
+## Level-ups waiting for the screen to be free: [[level, rewards]].
+var _pending_levels: Array = []
+## The level the build catalog's price tags were made for.
+var _priced_level := 1
 ## Kept for the smoke test, which prints the chat.
 var _chat_lines: Array[String] = []
 
@@ -128,6 +136,7 @@ func _ready() -> void:
 	_help = _build_help()
 	_leave = _build_leave()
 	_result = _build_result()
+	_build_level_cards()
 	_build_shop()
 	_build_prompt()
 	_build_game_bar()
@@ -137,6 +146,13 @@ func _ready() -> void:
 	_build_build_mode()
 	GameState.earned.connect(_on_earned)
 	GameState.owned_changed.connect(_refresh_prices)
+	# A new level can unlock things in the build catalog.
+	_priced_level = Progress.level()
+	Progress.xp_changed.connect(func(_gained):
+		if Progress.level() != _priced_level:
+			_priced_level = Progress.level()
+			_refresh_prices())
+	Progress.leveled_up.connect(func(level, rewards): _pending_levels.append([level, rewards]))
 
 
 # --- Cards ---------------------------------------------------------------------
@@ -186,6 +202,10 @@ func _build_player_card() -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			open_shop())
 	set_wallet()
+	# Your level and XP; tapping it shows what's next.
+	_level_badge = LevelBadge.new()
+	_level_badge.pressed.connect(open_level_card)
+	words.add_child(_level_badge)
 
 
 func _build_pet_card() -> void:
@@ -373,6 +393,22 @@ func _build_leave() -> PanelContainer:
 	return box.get_parent()
 
 
+# --- Levels ------------------------------------------------------------------------
+
+func _build_level_cards() -> void:
+	_level_card = _place(LevelCard.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	_level_card.visible = false
+	_level_card.closed.connect(func(): _show_only(null))
+	_level_up = _place(LevelUpCard.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	_level_up.visible = false
+	_level_up.closed.connect(func(): _show_only(null))
+
+
+func open_level_card() -> void:
+	if not _level_card.visible:
+		_show_only(_level_card)
+
+
 # --- Shop, nearby things and Star Chase ---------------------------------------
 
 func _build_shop() -> void:
@@ -440,6 +476,8 @@ func _build_result() -> PanelContainer:
 	reward.add_child(UiTheme.texture_rect(UiTheme.icon("chestnut"), 40))
 	_result_reward = UiTheme.label("", &"Heading", 34, Color("b8741a"))
 	reward.add_child(_result_reward)
+	_result_xp = UiTheme.label("", &"Heading", 34, UiTheme.PURPLE)
+	reward.add_child(_result_xp)
 	var best := UiTheme.hbox(8)
 	best.alignment = BoxContainer.ALIGNMENT_CENTER
 	best.add_child(UiTheme.texture_rect(UiTheme.icon("trophy"), 30))
@@ -504,10 +542,12 @@ func show_game(countdown: float, caught: int, time_left: float) -> void:
 	_game_bar.reset_size()
 
 
-func show_game_result(caught: int, reward: int, new_best: bool) -> void:
+func show_game_result(caught: int, reward: int, new_best: bool, xp := 0) -> void:
 	_game_bar.visible = false
 	_result_stars.text = "You caught %d star%s!" % [caught, "" if caught == 1 else "s"]
 	_result_reward.text = "+%d" % reward
+	_result_xp.text = "   +%d XP" % xp
+	_result_xp.visible = xp > 0
 	_result_best.visible = new_best and caught > 0
 	_show_only(_result)
 
@@ -728,6 +768,11 @@ func _show_buy(shop_key: String) -> void:
 	_buy_button.disabled = not GameState.can_afford(shop_key)
 	_buy_button.tooltip_text = "Buy this look" if GameState.can_afford(shop_key) \
 			else "You need more %s" % ShopCatalog.currency_name(price["currency"])
+	if ShopCatalog.level_locked(shop_key):
+		_buy_button.text = "Level %d" % ShopCatalog.level_needed(shop_key)
+		_buy_button.icon = UiTheme.icon("locked")
+		_buy_button.disabled = true
+		_buy_button.tooltip_text = "Reach level %d to buy this look" % ShopCatalog.level_needed(shop_key)
 
 
 ## Buys the look picked in build mode. Stardust looks open the shop instead,
@@ -752,7 +797,9 @@ func need_purchase(id: String, style: int) -> void:
 	var price := ShopCatalog.price(shop_key)
 	if price.is_empty():
 		return
-	if GameState.can_afford(shop_key):
+	if ShopCatalog.level_locked(shop_key):
+		toast("This look opens at level %d. Play to earn XP!" % ShopCatalog.level_needed(shop_key))
+	elif GameState.can_afford(shop_key):
 		toast("Tap Buy to get this look first!")
 	else:
 		toast("This look costs %s %s. Find more acorns to get it!" % [ShopCatalog.amount_text(price),
@@ -791,10 +838,16 @@ func _show_only(card: Control) -> void:
 
 
 func _cards() -> Array:
-	return [_phrases, _help, _leave, _result, _shop]
+	return [_phrases, _help, _leave, _result, _shop, _level_card, _level_up]
 
 
 func _process(delta: float) -> void:
+	# A level-up waits until nothing else is open and no game is running.
+	if not _pending_levels.is_empty() and not _game_bar.visible and not _cards().any(func(c): return c.visible):
+		var next: Array = _pending_levels.pop_front()
+		_level_up.show_level(next[0], next[1])
+		_show_only(_level_up)
+		_level_up.burst(_root)
 	if _toast_time > 0.0:
 		_toast_time -= delta
 		_toast.modulate.a = clampf(_toast_time * 2.0, 0.0, 1.0)

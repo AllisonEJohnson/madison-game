@@ -26,6 +26,8 @@ const GOLD_CAP := Color("d9961c")
 
 ## The local player, set by the world. Only they can pick acorns up.
 var player: Node3D
+## How often a new acorn is a golden one (the Sky Garden has more).
+var golden_chance := GOLDEN_CHANCE
 
 var _spots: Array[Vector3] = []
 var _free: Array[int] = [] # spots without an acorn
@@ -107,7 +109,7 @@ func _grow() -> void:
 	if _free.is_empty():
 		return
 	var slot: int = _free.pop_at(_rng.randi() % _free.size())
-	var golden := _rng.randf() < GOLDEN_CHANCE
+	var golden := _rng.randf() < golden_chance
 	var node := build_acorn(golden)
 	node.position = _spots[slot] + Vector3(0, HOVER, 0)
 	add_child(node)

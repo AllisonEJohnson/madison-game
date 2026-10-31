@@ -20,22 +20,25 @@ const STARDUST := "stardust"
 ## "free" is how many of its first looks are free (1 when left out); "stardust"
 ## sells some looks for Stardust instead ({look: amount}). Kinds not listed, and
 ## items without looks, are free.
+## "level" is the player level needed to buy the Acorn looks (1 when left
+## out); Stardust looks can be bought at any level, because premium is for
+## getting ahead faster. See Levels for what each level brings.
 const FURNITURE := {
 	"chair": {"price": 20},
 	"table": {"price": 35},
-	"armchair": {"price": 45},
-	"sofa": {"price": 80, "stardust": {6: 20}},
-	"bed": {"price": 90, "stardust": {6: 25}},
-	"wardrobe": {"price": 70},
-	"bookshelf": {"price": 60},
+	"armchair": {"price": 45, "level": 2},
+	"sofa": {"price": 80, "stardust": {6: 20}, "level": 2},
+	"bed": {"price": 90, "stardust": {6: 25}, "level": 3},
+	"wardrobe": {"price": 70, "level": 3},
+	"bookshelf": {"price": 60, "level": 3},
 	"lamp": {"price": 25},
 	"plant": {"price": 15},
-	"fridge": {"price": 70},
-	"stove": {"price": 70},
-	"bathtub": {"price": 90},
-	"toilet": {"price": 40},
-	"piano": {"price": 180, "free": 0, "stardust": {1: 30}},
-	"arcade": {"price": 220, "free": 0, "stardust": {4: 35}},
+	"fridge": {"price": 70, "level": 4},
+	"stove": {"price": 70, "level": 4},
+	"bathtub": {"price": 90, "level": 4},
+	"toilet": {"price": 40, "level": 4},
+	"piano": {"price": 180, "free": 0, "stardust": {1: 30}, "level": 6},
+	"arcade": {"price": 220, "free": 0, "stardust": {4: 35}, "level": 9},
 	"toy_box": {"price": 30, "stardust": {9: 15}},
 	"pet_bed": {"price": 40, "stardust": {3: 15}},
 }
@@ -46,21 +49,22 @@ const FURNITURE := {
 ## always free. Keys not listed (face, ears, skin, height, colors) are free.
 ## Numbers are positions in CharacterParts.lists() (or the shape avatar's
 ## OPTIONS when the art isn't installed).
+## "level" works as for furniture.
 const CLOTHES := {
 	# Hair is part of who you are, so most styles are free and only the fancy ones cost.
 	"hair": {"price": 40, "for_sale": [2, 10, 11, 12, 20, 22, 23, 24, 28, 29], "stardust": {18: 15, 19: 15}},
 	"top": {"price": 35, "free": 13, "stardust": {44: 20, 51: 20}},
 	"bottom": {"price": 30, "free": 7},
-	"outfit": {"price": 60, "free": 1, "stardust": {9: 20}},
+	"outfit": {"price": 60, "free": 1, "stardust": {9: 20}, "level": 4},
 	"shoes": {"price": 25, "free": 6},
 	"socks": {"price": 15, "free": 2},
-	"gloves": {"price": 20, "free": 3},
-	"hat": {"price": 40, "free": 9, "stardust": {25: 15, 40: 15, 52: 15}},
-	"glasses": {"price": 30, "free": 6},
-	"face_extra": {"price": 20, "free": 4},
-	"costume": {"price": 250, "free": 1, "stardust": {3: 40, 5: 40, 9: 40, 12: 40}},
+	"gloves": {"price": 20, "free": 3, "level": 3},
+	"hat": {"price": 40, "free": 9, "stardust": {25: 15, 40: 15, 52: 15}, "level": 2},
+	"glasses": {"price": 30, "free": 6, "level": 2},
+	"face_extra": {"price": 20, "free": 4, "level": 3},
+	"costume": {"price": 250, "free": 1, "stardust": {3: 40, 5: 40, 9: 40, 12: 40}, "level": 8},
 	# The shape avatar's back items, used only without the licensed art.
-	"back": {"price": 40, "free": 2},
+	"back": {"price": 40, "free": 2, "level": 2},
 }
 
 ## The shop's clothing tabs: which option keys each shows.
@@ -102,6 +106,45 @@ static func price(key: String) -> Dictionary:
 
 static func is_free(key: String) -> bool:
 	return price(key).is_empty()
+
+
+## The player level needed to buy something: its kind's "level" for Acorn
+## prices, and 1 for free things and Stardust looks.
+static func level_needed(key: String) -> int:
+	var p := price(key)
+	if p.is_empty() or p["currency"] != ACORNS:
+		return 1
+	var parts := key.split(":")
+	var rules: Dictionary = FURNITURE if parts[0] == "furniture" else CLOTHES
+	return maxi(int(rules.get(parts[1], {}).get("level", 1)), 1)
+
+
+## True when the player's level is too low to buy it yet.
+static func level_locked(key: String) -> bool:
+	return level_needed(key) > Progress.level()
+
+
+## The kinds of things the shop starts selling at a level, as words for the
+## level-up card: ["sofas", "armchairs", "hats"].
+static func unlocked_at(level: int) -> Array:
+	var out := []
+	for id in FURNITURE:
+		if int(FURNITURE[id].get("level", 1)) == level and FurnitureCatalog.ITEMS.has(id):
+			out.append(_plural(str(FurnitureCatalog.ITEMS[id]["name"]).to_lower()))
+	for option in CLOTHES:
+		if int(CLOTHES[option].get("level", 1)) == level and AvatarBuilder.options(option).size() > 1:
+			out.append(str(KEY_NAMES.get(option, option)).to_lower())
+	return out
+
+
+static func _plural(word: String) -> String:
+	if word.ends_with("s"):
+		return word
+	if word.ends_with("shelf"):
+		return word.trim_suffix("f") + "ves"
+	if word.ends_with("sh") or word.ends_with("ch") or word.ends_with("x"):
+		return word + "es"
+	return word + "s"
 
 
 ## True for keys that name something that exists, free or not.

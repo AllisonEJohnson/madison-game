@@ -14,10 +14,14 @@ const HELP := [
 	"unlock all          own everything in the shop",
 	"unlock reset        take back what was bought (keeps what you wear or placed)",
 	"wallet              show balances and membership",
+	"xp <amount>         give XP (negative takes it away)",
+	"level <n>           jump to a level (level alone shows it)",
+	"level reset         start leveling over, as a new player",
+	"boost <minutes>     give a Star Boost, double XP (0 ends it)",
 	"help                show this list",
 ]
 const MAX_AMOUNT := 1_000_000
-const LOG_LINES := 8
+const LOG_LINES := 12
 
 var _panel: PanelContainer
 var _log: Label
@@ -116,7 +120,39 @@ func run(words: PackedStringArray) -> String:
 				GameState.reset_owned()
 				return "Took back what was bought. You own %d things." % GameState.profile["owned"].size()
 			return "Say unlock all, or unlock reset"
+		"xp":
+			if not arg.is_valid_int() or absi(arg.to_int()) > MAX_AMOUNT:
+				return "Give a whole number, like: xp 100"
+			if arg.to_int() >= 0:
+				Progress.add_xp(arg.to_int(), false)
+			else:
+				Progress.set_xp(Progress.xp() + arg.to_int())
+			return _level_text()
+		"level":
+			if arg == "":
+				return _level_text()
+			if arg == "reset":
+				GameState.profile.merge(Levels.new_save(), true)
+				Progress.set_xp(0)
+				return "Starting over. " + _level_text()
+			if not arg.is_valid_int() or arg.to_int() < 1 or arg.to_int() > Levels.MAX_LEVEL:
+				return "Give a level from 1 to %d, like: level 5" % Levels.MAX_LEVEL
+			Progress.set_level(arg.to_int())
+			return _level_text()
+		"boost":
+			if not arg.is_valid_int() or absi(arg.to_int()) > Levels.BOOST_MAX_MINUTES:
+				return "Give minutes up to %d, like: boost 30" % Levels.BOOST_MAX_MINUTES
+			Progress.add_boost(arg.to_int())
+			return _level_text()
 	return "Unknown command. Type help for the list."
+
+
+func _level_text() -> String:
+	var p := Progress.progress()
+	var boost := Progress.boost_seconds_left()
+	return "Level %d, %s, %d XP in all%s" % [p["level"],
+			"top level" if int(p["need"]) == 0 else "%d of %d XP to the next" % [p["into"], p["need"]],
+			Progress.xp(), ", Star Boost for %d min" % ceili(boost / 60.0) if boost > 0 else ""]
 
 
 func _wallet_text() -> String:
