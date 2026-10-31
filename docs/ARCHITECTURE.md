@@ -78,7 +78,8 @@ Keys must change whenever what they show changes, so avatar pictures include a h
 the page is shown, so 20 items or 2,000 cost the same. `CatalogBrowser` wraps it with category tabs
 (`{id, name, icon}`), group chips and search over entries `{key, name, category, group, thumb, tags}`.
 Build mode lists every furniture style as its own entry (`FurnitureCatalog.entries()`, key `"id:style"`),
-and new furniture just needs a `category` from `FurnitureCatalog.CATEGORIES`. Favorites and recents are
+and new furniture just needs a `category` from `FurnitureCatalog.CATEGORIES`. Walls, floors and fences
+have no category: they belong to the ready-built house, so players can't place or remove them. Favorites and recents are
 stored in the profile by key, are local only, and skip keys that no longer exist. As a stress test,
 `--shot-ui=stress` loads all 818 Bright Furniture prefabs into the build catalog: setup takes about
 30 ms and a page of pictures about 2 seconds the first time.

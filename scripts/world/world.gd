@@ -306,7 +306,7 @@ func _pet_action(feed: bool) -> void:
 
 func _toggle_build() -> void:
 	if not _build.house:
-		_hud.toast("You need a plot to build. The neighborhood is full right now.")
+		_hud.toast("You need a home to decorate. The neighborhood is full right now.")
 		return
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)

@@ -12,9 +12,9 @@ const SEND_DELAY := 0.3
 var active := false
 var house: House
 var player: Player
-var item_id := "wall"
+var item_id := "sofa"
 var item_rotation := 0
-var item_color := Color.html(FurnitureCatalog.ITEMS["wall"]["color"])
+var item_color := Color.html(FurnitureCatalog.ITEMS["sofa"]["color"])
 var item_style := 0
 ## When on, a left click removes instead of placing.
 var erasing := false

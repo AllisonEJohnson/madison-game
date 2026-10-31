@@ -29,10 +29,10 @@ const HELP := [
 	["W A S D", "footprints", "Walk around"], ["Space", "sparkles", "Jump"],
 	["Right-drag", "eye", "Look around"], ["Wheel", "magnifying_glass_tilted_left", "Zoom in and out"],
 	["F", "meat_on_bone", "Feed your pet"], ["G", "tennis", "Play with your pet"],
-	["T", "speech_balloon", "Say something"], ["B", "hammer_and_wrench", "Build your home"],
+	["T", "speech_balloon", "Say something"], ["B", "couch_and_lamp", "Decorate your home"],
 	["H", "house", "Go to your home"], ["Esc", "door", "Leave"],
 ]
-## Paints for walls, floors, fences and rugs.
+## Paints for furniture made from shapes (pieces without model styles).
 const HOUSE_COLORS := ["f1e7d6", "ffffff", "f7d9c4", "ffe8a3", "cdeac0", "bfe0f5", "d9c8f0", "f5c6d6",
 		"c9a77c", "9a6b42", "6b4a32", "b8b2a7", "3f4a5a", "e07a5f", "6fa8dc"]
 const CHAT_LINES := 6
@@ -183,14 +183,14 @@ func _build_dock() -> void:
 	_dock.add_child(row)
 	var actions := [
 		["Chat", "speech_balloon", "T", open_quick_chat],
-		["Build", "hammer_and_wrench", "B", func(): build_toggled.emit()],
+		["Decorate", "couch_and_lamp", "B", func(): build_toggled.emit()],
 		["Home", "house", "H", func(): home_pressed.emit()],
 		["Help", "red_question_mark", "", func(): _show_only(_help)],
 		["Leave", "door", "Esc", ask_leave],
 	]
 	for a in actions:
 		var b := UiTheme.stacked_button(a[0], a[1], &"Button", 40)
-		b.custom_minimum_size = Vector2(84, 84)
+		b.custom_minimum_size = Vector2(104, 84)
 		b.add_theme_font_size_override("font_size", 16)
 		b.pressed.connect(a[3])
 		if a[2] != "":
@@ -308,8 +308,8 @@ func _build_build_mode() -> void:
 	_build_bar = _place(UiTheme.card(&"Banner"), Control.PRESET_CENTER_TOP, Vector2(0, 14))
 	var bar := UiTheme.hbox(14)
 	_build_bar.add_child(bar)
-	bar.add_child(UiTheme.texture_rect(UiTheme.icon("hammer_and_wrench"), 34))
-	bar.add_child(UiTheme.label("Building your home", &"Heading", 22, Color.WHITE))
+	bar.add_child(UiTheme.texture_rect(UiTheme.icon("couch_and_lamp"), 34))
+	bar.add_child(UiTheme.label("Decorating your home", &"Heading", 22, Color.WHITE))
 	for tip in [["Click", "place"], ["Right-click", "remove"], ["R", "turn"], ["E", "next look"]]:
 		var pair := UiTheme.hbox(5)
 		var key := UiTheme.label(tip[0], &"KeyBadge", 13)
@@ -420,7 +420,7 @@ func _build_pick_panel() -> Control:
 	_erase.add_theme_stylebox_override("hover_pressed", _erase.get_theme_stylebox("pressed"))
 	_erase.toggled.connect(func(on): erase_toggled.emit(on))
 	tools.add_child(_erase)
-	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton", "Leave build mode (B)")
+	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton", "Stop decorating (B)")
 	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	done.add_theme_font_size_override("font_size", 22)
 	done.add_theme_constant_override("icon_max_width", 28)
@@ -444,7 +444,7 @@ func _build_peek() -> void:
 	var turn := UiTheme.icon_button("counterclockwise_arrows_button", "Turn it", 56, "R")
 	turn.pressed.connect(func(): rotate_pressed.emit())
 	row.add_child(turn)
-	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton", "Leave build mode (B)")
+	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton", "Stop decorating (B)")
 	done.custom_minimum_size.y = 56
 	done.add_theme_font_size_override("font_size", 22)
 	done.add_theme_constant_override("icon_max_width", 28)

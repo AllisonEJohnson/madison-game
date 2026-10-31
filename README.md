@@ -4,7 +4,7 @@ An original online 3D neighborhood game for kids, built with **Godot 4.7+** (GDS
 Style your character, build and decorate your own home, and bring your pet everywhere.
 
 ![Character creator](docs/menu.png)
-![Build mode catalog](docs/home.png)
+![Decorating catalog](docs/home.png)
 ![In the neighborhood](docs/world.png)
 
 ## Play in your browser
@@ -37,16 +37,16 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | Right mouse drag / wheel | Look around / zoom |
 | F / G | Feed / play with your pet |
 | T | Quick chat (preset phrases) |
-| B | Build mode (left click place, right click or the wastebasket removes, R turn, E next look) |
+| B | Decorate your home (left click place, right click or the wastebasket removes, R turn, E next look) |
 | H | Go to your home |
-| Esc | Close a window, then leave build mode, then ask before leaving the world |
+| Esc | Close a window, then stop decorating, then ask before leaving the world |
 
 ## What's in the prototype
 
 - **Kid-friendly UI**: one shared look (rounded cards, chunky buttons, color icons, two friendly fonts)
   with big tap targets and pictures instead of words wherever possible. Every option in the creator and
   every catalog item shows a rendered 3D picture of itself.
-- **Build catalog made for big art packs**: category tabs, "All / Sofas / Lamps" chips, search,
+- **Decorating catalog made for big art packs**: category tabs, "All / Sofas / Lamps" chips, search,
   a Favorites tab (tap the star) and a Recently used tab, with paged picture cards. Only the visible page
   is built and its pictures render in the background (and are cached on disk), so it stays quick with
   the whole 800+ model furniture pack loaded.
@@ -57,9 +57,9 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 - **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
   each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
   with, and have fullness and happiness that slowly drop.
-- **Houses**: each player gets a 12×12 plot with a furnished starter house. Build mode places floors,
-  walls, windows, doorways and fences in any color, and 18 kinds of furniture (beds, sofas, a fridge, a
-  bathtub, an arcade machine and more), most in several styles. Homes save automatically.
+- **Houses**: each player gets a 12×12 plot with a ready-built, furnished house. Players decorate it
+  with 18 kinds of furniture (beds, sofas, a fridge, a bathtub, an arcade machine and more), most in
+  several styles; the walls and floors stay as built. Homes save automatically.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
 - **Kid safety**: no free-text chat or typed names. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kid-safety).
 

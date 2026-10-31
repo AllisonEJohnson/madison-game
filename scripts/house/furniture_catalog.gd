@@ -7,9 +7,10 @@ extends RefCounted
 const FURNITURE := "Bright_Furniture/prefabs/assets/"
 const PET_STUFF := "Animals/prefabs/assets/assets/domestic_assets/"
 
-## Build-mode tabs, in order. Every item names one as its "category".
+## Build-mode tabs, in order. Every furniture item names one as its "category".
+## Walls and floors have none: they make up the ready-built house, which
+## players decorate but don't rebuild.
 const CATEGORIES := [
-	{"id": "build", "name": "Walls & Floors", "icon": "brick"},
 	{"id": "living", "name": "Living Room", "icon": "couch_and_lamp"},
 	{"id": "bedroom", "name": "Bedroom", "icon": "bed"},
 	{"id": "kitchen", "name": "Kitchen", "icon": "cooking"},
@@ -25,13 +26,13 @@ const CATEGORIES := [
 ## FURNITURE) picked in build mode; items without them, or every item when the
 ## art isn't installed, are built from shapes in "color", sized to "box".
 const ITEMS := {
-	"floor": {"name": "Wood Floor", "category": "build", "layer": "floor", "color": "c9a77c"},
-	"tile": {"name": "Tile Floor", "category": "build", "layer": "floor", "color": "dfe6ea"},
-	"path": {"name": "Stone Path", "category": "build", "layer": "floor", "color": "b8b2a7"},
-	"wall": {"name": "Wall", "category": "build", "layer": "wall", "color": "f1e7d6"},
-	"window": {"name": "Window", "category": "build", "layer": "wall", "color": "f1e7d6"},
-	"door": {"name": "Doorway", "category": "build", "layer": "wall", "color": "f1e7d6"},
-	"fence": {"name": "Fence", "category": "build", "layer": "wall", "color": "9a6b42"},
+	"floor": {"name": "Wood Floor", "layer": "floor", "color": "c9a77c"},
+	"tile": {"name": "Tile Floor", "layer": "floor", "color": "dfe6ea"},
+	"path": {"name": "Stone Path", "layer": "floor", "color": "b8b2a7"},
+	"wall": {"name": "Wall", "layer": "wall", "color": "f1e7d6"},
+	"window": {"name": "Window", "layer": "wall", "color": "f1e7d6"},
+	"door": {"name": "Doorway", "layer": "wall", "color": "f1e7d6"},
+	"fence": {"name": "Fence", "layer": "wall", "color": "9a6b42"},
 	"table": {"name": "Table", "category": "kitchen", "layer": "object", "color": "a8744a", "solid": true,
 		"styles": ["kitchen_table/kitchen_table_007", "kitchen_table/kitchen_table_009",
 			"kitchen_table/kitchen_table_005", "kitchen_table/kitchen_table_006",
@@ -112,15 +113,17 @@ static func ids() -> Array:
 
 ## Every look a player can pick in build mode, one per style (or one for an
 ## item without styles), keyed "id:style". Shapes have no styles to show
-## when the art isn't installed.
+## when the art isn't installed. Walls and floors aren't offered.
 static func entries() -> Array:
 	var out := []
 	for id in ITEMS:
 		var item: Dictionary = ITEMS[id]
+		if not item.has("category"):
+			continue
 		var looks := style_count(id) if has_art(id) else 1
 		for s in looks:
 			out.append({"key": "%s:%d" % [id, s], "id": id, "style": s, "name": item["name"],
-				"category": item.get("category", CATEGORIES[0]["id"]), "group": item["name"],
+				"category": item["category"], "group": item["name"],
 				"tags": id.replace("_", " ")})
 	return out
 
