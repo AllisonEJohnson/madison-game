@@ -397,7 +397,7 @@ func _process(delta: float) -> void:
 func _place_camera(delta: float) -> void:
 	var t := minf(6.0 * delta, 1.0)
 	_camera_target = _camera_target.lerp(_view_target(), t)
-	_camera_distance = lerpf(_camera_distance, CAMERA_DISTANCE.get(_view, 4.6), t)
+	_camera_distance = lerpf(_camera_distance, CAMERA_DISTANCE.get(_view, 4.6) * AvatarBuilder.view_zoom(_view), t)
 	_camera.position = _camera_target + Vector3(0.18, 0.12, 1.0).normalized() * _camera_distance
 	_camera.look_at(_camera_target)
 	var screen := get_viewport_rect().size
@@ -578,7 +578,7 @@ func _add_height_slider() -> void:
 func _add_color_row(row: Dictionary, is_pet := false) -> void:
 	_content.add_child(UiTheme.label(row["label"], &"Hint", 16))
 	var target: Dictionary = _profile["pet"] if is_pet else _profile["avatar"]
-	var palette := SwatchRow.new(row["colors"], str(target.get(row["key"], "")))
+	var palette := SwatchRow.new(row["colors"], str(target.get(row["key"], "")), true, row.get("original", false))
 	palette.color_chosen.connect(func(hex):
 		if is_pet:
 			_set_pet(row["key"], hex)

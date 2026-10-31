@@ -3,6 +3,11 @@ extends RefCounted
 ## Builds a stylable avatar from a plain Dictionary config.
 ## The config only holds option indices and hex colors, so it is easy to
 ## save as JSON and cheap to send over the network.
+##
+## With the licensed art installed, avatars are the Cute Characters pack's
+## rigged characters (see CharacterParts); without it they are built from
+## simple shapes. The two have different choices, so the character creator asks
+## `tabs()` and `options()` what to show.
 
 const SKIN_TONES := ["ffe0cc", "f6cba9", "e0ac80", "c68a5e", "a0683f", "7a4a2a", "553220"]
 const HAIR_COLORS := ["1f1a17", "4a2f20", "8a5a33", "d9b26a", "f2e3b3", "c2452d", "e26fb0", "5a8de0", "7fd18a", "ffffff"]
@@ -10,6 +15,7 @@ const EYE_COLORS := ["3b2a20", "4f7fd6", "3e9a5b", "8a6a3a", "7a4fc2", "2a2a2a"]
 const CLOTH_COLORS := ["e04848", "f2994a", "f2c94c", "6fcf97", "2fa37a", "56ccf2", "3f7fd9",
 		"9b51e0", "eb5f9a", "ffffff", "8a8a8a", "2f3550", "1f1f1f", "8d5b3a"]
 
+## Choices for the shape avatar.
 const OPTIONS := {
 	"build": ["Slim", "Regular", "Broad"],
 	"eyes": ["Round", "Happy", "Sleepy", "Sparkle", "Wink", "Dots"],
@@ -26,17 +32,68 @@ const OPTIONS := {
 	"back": ["None", "Backpack", "Cape", "Wings"],
 }
 
+## Choices that reset when a profile from before the character art is loaded.
+const LEGACY_RESET := ["glasses", "hair", "top", "top_color", "bottom", "bottom_color", "shoes",
+	"shoe_color", "hat", "hat_color"]
+
 const HEAD_Y := 1.58
 const HEAD_R := 0.2
+const SHAPE_HEIGHT := 1.8
+
+
+static func has_art() -> bool:
+	return Art.has(CharacterParts.SKELETON)
+
+
+## The names of the choices for an option key, or [] for keys that are colors,
+## the height, or unused by the current kind of avatar.
+static func options(key: String) -> Array:
+	return CharacterParts.labels(key) if has_art() else OPTIONS.get(key, [])
 
 
 ## The character creator's layout: tabs of rows. A row with "colors" picks a
 ## color, "height" is a slider, and any other key picks from options(key).
 ## The creator shows a color row together with the option row above it.
-## Optional fields: "icon" (a file in assets/ui/icons) on tabs and rows, and
+## Optional fields: "icon" (a file in assets/ui/icons) on tabs and rows,
 ## "view" (face, head, body, torso, legs, feet or back), which frames the
-## pictures of each option.
+## pictures of each option, and "original" on a color row, which offers ""
+## to keep the model's own colors.
 static func tabs() -> Array:
+	if has_art():
+		var tint := {"colors": CLOTH_COLORS, "original": true}
+		return [
+			{"title": "Face", "icon": "smiling_face_with_smiling_eyes", "view": "face", "rows": [
+				{"label": "Face", "key": "face", "icon": "grinning_squinting_face"},
+				{"label": "Eyelashes", "key": "lashes", "icon": "eye"},
+				{"label": "Ears", "key": "ears", "icon": "hugging_face"},
+				{"label": "Glasses", "key": "glasses", "icon": "glasses"},
+				{"label": "Face extras", "key": "face_extra", "icon": "star-struck"},
+			]},
+			{"title": "Hair", "icon": "person_getting_haircut", "view": "head", "rows": [
+				{"label": "Hair style", "key": "hair", "icon": "person_getting_haircut"},
+				{"label": "Hair color", "key": "hair_color", "colors": HAIR_COLORS, "original": true},
+			]},
+			{"title": "Body", "icon": "person_standing", "view": "body", "rows": [
+				{"label": "Skin", "key": "skin", "colors": CharacterParts.skin_colors(), "icon": "waving_hand"},
+				{"label": "Height", "key": "height", "icon": "straight_ruler"},
+			]},
+			{"title": "Clothes", "icon": "t-shirt", "view": "body", "rows": [
+				{"label": "Top", "key": "top", "icon": "t-shirt", "view": "torso"},
+				{"label": "Top color", "key": "top_color"}.merged(tint),
+				{"label": "Bottoms", "key": "bottom", "icon": "jeans", "view": "legs"},
+				{"label": "Bottoms color", "key": "bottom_color"}.merged(tint),
+				{"label": "Outfits", "key": "outfit", "icon": "dress"},
+				{"label": "Shoes", "key": "shoes", "icon": "running_shoe", "view": "feet"},
+				{"label": "Shoe color", "key": "shoe_color"}.merged(tint),
+				{"label": "Socks", "key": "socks", "icon": "footprints", "view": "legs"},
+				{"label": "Gloves", "key": "gloves", "icon": "flexed_biceps", "view": "torso"},
+			]},
+			{"title": "Extras", "icon": "crown", "view": "body", "rows": [
+				{"label": "Hats", "key": "hat", "icon": "top_hat", "view": "head"},
+				{"label": "Hat color", "key": "hat_color"}.merged(tint),
+				{"label": "Costumes", "key": "costume", "icon": "party_popper"},
+			]},
+		]
 	return [
 		{"title": "Face", "icon": "smiling_face_with_smiling_eyes", "view": "face", "rows": [
 			{"label": "Eyes", "key": "eyes", "icon": "eye"},
@@ -75,18 +132,30 @@ static func tabs() -> Array:
 	]
 
 
-## The choices for one option key, in index order.
-static func options(key: String) -> Array:
-	return OPTIONS.get(key, [])
-
-
-## How high the middle of the face is, for the creator's close-up camera.
+## Height of the middle of the face above the feet, for framing cameras.
 static func face_height(config: Dictionary) -> float:
-	return HEAD_Y * float(config.get("height", 1.0))
+	var h := float(config.get("height", 1.0))
+	return (CharacterParts.FACE_Y * CharacterParts.SCALE if has_art() else HEAD_Y) * h
+
+
+## How much farther back the creator's camera stands for a view than it does
+## for the shape avatar, whose head is about half the size of an art avatar's.
+static func view_zoom(view: String) -> float:
+	return 1.3 if has_art() and view in ["face", "head"] else 1.0
+
+
+## Height of the top of the head (without hats) above the feet.
+static func head_top(config: Dictionary) -> float:
+	var h := float(config.get("height", 1.0))
+	return (CharacterParts.HEIGHT * CharacterParts.SCALE if has_art() else SHAPE_HEIGHT) * h
+
+
+static func art_paths() -> Array:
+	return CharacterParts.art_paths()
 
 
 static func default_config() -> Dictionary:
-	return {
+	var c := {
 		"skin": SKIN_TONES[1], "height": 1.0, "build": 1,
 		"eyes": 0, "eye_color": EYE_COLORS[1], "brows": 1, "nose": 1, "mouth": 0, "cheeks": 1,
 		"glasses": 0, "glasses_color": "333344",
@@ -97,10 +166,19 @@ static func default_config() -> Dictionary:
 		"hat": 0, "hat_color": "f2c94c",
 		"back": 0, "back_color": "8a5ad6",
 	}
+	# Every key is always present so a profile keeps its choices for both kinds
+	# of avatar; the art's defaults win when it is installed.
+	var art := CharacterParts.default_config()
+	c.merge(art, has_art())
+	return c
 
 
 static func random_config(rng: RandomNumberGenerator) -> Dictionary:
 	var c := default_config()
+	if has_art():
+		CharacterParts.randomize_config(c, rng, CLOTH_COLORS + HAIR_COLORS)
+		c["height"] = snappedf(rng.randf_range(0.9, 1.1), 0.01)
+		return c
 	for key in OPTIONS:
 		c[key] = rng.randi_range(0, OPTIONS[key].size() - 1)
 	c["glasses"] = 0 if rng.randf() < 0.7 else c["glasses"]
@@ -118,18 +196,27 @@ static func sanitize(config: Variant) -> Dictionary:
 	var out := default_config()
 	if not config is Dictionary:
 		return out
+	# Profiles made before the character art chose shape-avatar items by number,
+	# which now mean other items, so those start from the art's defaults.
+	var legacy: bool = has_art() and not config.has("lashes")
 	for key in out:
-		if not config.has(key):
+		if not config.has(key) or legacy and key in LEGACY_RESET:
 			continue
 		var value = config[key]
-		if OPTIONS.has(key):
+		# Keys only the other kind of avatar uses still keep a valid choice.
+		var choices := options(key)
+		if choices.is_empty():
+			choices = CharacterParts.labels(key) if OPTIONS.get(key, []).is_empty() else OPTIONS[key]
+		if not choices.is_empty():
 			if value is int or value is float:
-				out[key] = clampi(int(value), 0, OPTIONS[key].size() - 1)
+				out[key] = clampi(int(value), 0, choices.size() - 1)
 		elif key == "height":
 			if value is int or value is float:
 				out[key] = clampf(float(value), 0.85, 1.15)
 		elif value is String and Color.html_is_valid(value):
 			out[key] = Color.html(value).to_html(false)
+		elif value is String and value == "" and has_art() and CharacterParts.TINTS.has(key):
+			out[key] = ""
 	return out
 
 
@@ -142,9 +229,13 @@ static func col(config: Dictionary, key: String) -> Color:
 
 
 ## Returns a Node3D whose origin is between the feet, facing +Z.
-## Limb pivots are named ArmL/ArmR/LegL/LegR so callers can animate them.
+## Shape avatars name their limb pivots ArmL/ArmR/LegL/LegR so callers can
+## animate them; art avatars animate with `play()`.
 static func build(config: Dictionary) -> Node3D:
 	config = sanitize(config)
+	var art := CharacterParts.build(config)
+	if art:
+		return art
 	var root := Node3D.new()
 	root.name = "Avatar"
 	var s := float(config["height"])
@@ -170,6 +261,12 @@ static func build(config: Dictionary) -> Node3D:
 	_build_hat(head, config)
 	_build_back(root, config)
 	return root
+
+
+## Plays "Idle", "Walk", "Run" or "Fall" on an art avatar. Returns false for
+## shape avatars, which the caller animates by swinging their limbs.
+static func play(avatar: Node3D, state: String, speed := 1.0) -> bool:
+	return CharacterParts.play(avatar, state, speed)
 
 
 # --- Body -----------------------------------------------------------------

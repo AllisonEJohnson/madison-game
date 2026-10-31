@@ -1,7 +1,8 @@
 class_name SwatchRow
 extends HFlowContainer
 ## Round color swatches plus a rainbow button that opens a full color picker.
-## The picked swatch gets a ring.
+## The picked swatch gets a ring. With `original`, an "Original" chip first
+## picks "", which keeps a model's own colors.
 
 signal color_chosen(hex: String)
 
@@ -9,13 +10,20 @@ const SWATCH := 40
 
 var _hex := ""
 var _swatches := {} # hex -> Button
+var _original: Button
 var _picker: ColorPicker
 var _popup: PopupPanel
 
 
-func _init(palette: Array, current: String, custom := true) -> void:
+func _init(palette: Array, current: String, custom := true, original := false) -> void:
 	add_theme_constant_override("h_separation", 8)
 	add_theme_constant_override("v_separation", 8)
+	if original:
+		_original = UiTheme.button("Original", "sparkles", &"ChipButton", "Keep its own colors")
+		_original.toggle_mode = true
+		_original.custom_minimum_size.y = SWATCH
+		_original.pressed.connect(func(): _choose(""))
+		add_child(_original)
 	for hex_value in palette:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(SWATCH, SWATCH)
@@ -42,6 +50,8 @@ func _init(palette: Array, current: String, custom := true) -> void:
 ## Shows `hex` as the current color without sending color_chosen.
 func set_color(hex: String) -> void:
 	_hex = Color.html(hex).to_html(false) if Color.html_is_valid(hex) else ""
+	if _original:
+		_original.set_pressed_no_signal(_hex == "")
 	for key in _swatches:
 		var b: Button = _swatches[key]
 		var picked: bool = key == _hex

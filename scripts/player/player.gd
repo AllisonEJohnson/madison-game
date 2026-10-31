@@ -27,6 +27,7 @@ var _arm: SpringArm3D
 var _yaw := 0.0
 var _pitch := -0.35
 var _walk_time := 0.0
+var _air_time := 0.0
 var _last_pos := Vector3.ZERO
 var _bubble: Label3D
 var _bubble_time := 0.0
@@ -53,20 +54,22 @@ func setup(data: Dictionary) -> void:
 	_model = Node3D.new()
 	_model.name = "Model"
 	add_child(_model)
-	_avatar = AvatarBuilder.build(data.get("avatar", {}))
+	var avatar_config := AvatarBuilder.sanitize(data.get("avatar", {}))
+	_avatar = AvatarBuilder.build(avatar_config)
 	_model.add_child(_avatar)
+	var head_top := AvatarBuilder.head_top(avatar_config)
 
 	var label := Label3D.new()
 	label.text = display_name
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position.y = 2.15
+	label.position.y = head_top + 0.35
 	label.pixel_size = 0.005
 	label.outline_size = 10
 	add_child(label)
 
 	_bubble = Label3D.new()
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_bubble.position.y = 2.5
+	_bubble.position.y = head_top + 0.7
 	_bubble.pixel_size = 0.005
 	_bubble.outline_size = 12
 	_bubble.modulate = Color("fff8d6")
@@ -131,8 +134,9 @@ func _physics_process(delta: float) -> void:
 		position = position.lerp(sync_position, minf(15.0 * delta, 1.0))
 		_model.rotation.y = lerp_angle(_model.rotation.y, sync_yaw, minf(15.0 * delta, 1.0))
 	var speed := Vector2(position.x - _last_pos.x, position.z - _last_pos.z).length() / maxf(delta, 0.0001)
+	var climb := (position.y - _last_pos.y) / maxf(delta, 0.0001)
 	_last_pos = position
-	_animate(delta, speed)
+	_animate(delta, speed, climb)
 	if _bubble.visible:
 		_bubble_time -= delta
 		_bubble.visible = _bubble_time > 0.0
@@ -164,7 +168,13 @@ func _typing() -> bool:
 	return get_viewport().gui_get_focus_owner() is LineEdit
 
 
-func _animate(delta: float, speed: float) -> void:
+func _animate(delta: float, speed: float, climb: float) -> void:
+	# Rising or falling fast means a jump or a drop; the short hold stops the
+	# pose flickering at the top of a jump.
+	_air_time = 0.25 if absf(climb) > 1.0 else _air_time - delta
+	var state := "Fall" if _air_time > 0.0 else "Run" if speed > 3.0 else "Walk" if speed > 0.5 else "Idle"
+	if AvatarBuilder.play(_avatar, state, clampf(speed / SPEED, 0.6, 1.3) if state == "Run" else 1.0):
+		return
 	var swing := 0.0
 	if speed > 0.5:
 		_walk_time += delta * 9.0
@@ -179,6 +189,7 @@ func _animate(delta: float, speed: float) -> void:
 
 func teleport(world_pos: Vector3) -> void:
 	position = world_pos
+	_last_pos = world_pos
 	velocity = Vector3.ZERO
 	sync_position = position
 
