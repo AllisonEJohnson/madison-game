@@ -72,6 +72,7 @@ func _register_inputs() -> void:
 		"pet_play": [KEY_G],
 		"build_mode": [KEY_B],
 		"build_rotate": [KEY_R],
+		"build_style": [KEY_E],
 		"go_home": [KEY_H],
 		"quick_chat": [KEY_T],
 		"menu": [KEY_ESCAPE],

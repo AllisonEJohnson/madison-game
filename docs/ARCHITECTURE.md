@@ -9,19 +9,22 @@ autoload/
 scenes/
   main_menu.tscn     Character creator + play buttons (scripts/ui/main_menu.gd)
   world.tscn         The neighborhood (scripts/world/world.gd)
+itHappy/             Licensed models, cloned from the private madison-game-art repo (git-ignored; see "Art")
 scripts/
   avatar/avatar_builder.gd    Avatar config → 3D model (all styling options live here)
-  pets/pet_builder.gd         Pet config → 3D model
-  pets/pet.gd                 Follow behavior, needs, emotes
-  house/furniture_catalog.gd  Buildable items and how each is modeled
+  pets/pet_builder.gd         Pet config → 3D model (coats use the licensed animal models)
+  pets/pet.gd                 Follow behavior, needs, emotes, walk/run/idle animations
+  house/furniture_catalog.gd  Buildable items: footprints, styles (licensed models) and shape fallbacks
   house/house.gd              A plot: grid layout, place/remove, validation
   house/build_controller.gd   Mouse-driven build mode with ghost preview
   player/player.gd            Movement, camera, animation, network sync
   ui/hud.gd                   In-world UI
+  world/scenery.gd            Ground, roads, plaza, trees, bushes and flowers
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
   util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
-  dev/                        Smoke test and screenshot helpers (only run with flags)
+  util/art.gd                 Loads licensed models from itHappy/, or returns null when they're missing
+  dev/                        Smoke test, screenshot helpers, and prune_art.gd for the web build
 ```
 
 ## Data model
@@ -29,12 +32,31 @@ scripts/
 Everything a player owns is a small JSON-friendly Dictionary of option indices and hex colors:
 
 - `avatar`: e.g. `{"hair": 5, "hair_color": "e26fb0", "eyes": 3, "top": 2, ...}`
-- `pet`: `{"species": 1, "name": "Mochi", "color": "...", "accent": "...", "collar": "..."}`
-- `house`: list of `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f"}` on a 12×12 grid
+- `pet`: `{"species": 1, "coat": 2, "name": "Mochi", "color": "...", "accent": "...", "collar": "..."}`
+- `house`: list of `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f", "s": 3}` on a 12×12 grid
+  (`r` quarter turns, `c` paint color for shape-built items, `s` style for items with models; big
+  items like beds and sofas cover two cells)
 - `name_parts`: `{"adjective": 3, "noun": 7, "number": 42}` → "CozyKoala42"
 
 Adding a new hat, hairstyle or furniture piece is one entry in an options list plus a few lines that
 build its shape. Builders also have a `sanitize()` that clamps any config to valid values.
+
+## Art
+
+The furniture, pets and trees come from three paid ithappy packs (Bright Furniture, Animals, Cute
+Characters). Their license forbids sharing the raw files, and this repo is public, so they live in the
+private `AllisonEJohnson/madison-game-art` repo and are cloned into `itHappy/`, which git ignores:
+
+```sh
+git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
+```
+
+The pack scenes refer to `res://itHappy/...`, so the folder name matters. Code asks `Art.instance()`
+for a model and falls back to its simple shape version when that returns null, so the game still runs
+without the art (for example in a fork). Every model the game uses is listed in an `art_paths()`
+function (furniture catalog, pet builder, scenery). The web build checks out the art with the
+`ART_REPO_TOKEN` Actions secret, and `scripts/dev/prune_art.gd` deletes everything those lists don't
+need before export, which keeps the download small. A wrong path in a list fails that step.
 
 ## Networking
 

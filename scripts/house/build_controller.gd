@@ -13,6 +13,9 @@ var player: Player
 var item_id := "wall"
 var item_rotation := 0
 var item_color := Color.html(FurnitureCatalog.ITEMS["wall"]["color"])
+var item_style := 0
+
+var _styles := {} # item id -> last style picked, so switching items keeps it
 
 var _ghost: Node3D
 var _cell := Vector2i(-1, -1)
@@ -28,6 +31,17 @@ func set_active(on: bool) -> void:
 func select_item(id: String) -> void:
 	item_id = id
 	item_color = Color.html(FurnitureCatalog.ITEMS[id]["color"])
+	item_style = _styles.get(id, 0)
+	_refresh_ghost()
+
+
+## Moves to the next (1) or previous (-1) look for the selected item.
+func step_style(step: int) -> void:
+	var count := FurnitureCatalog.style_count(item_id)
+	if count == 0:
+		return
+	item_style = posmod(item_style + step, count)
+	_styles[item_id] = item_style
 	_refresh_ghost()
 
 
@@ -42,8 +56,9 @@ func _refresh_ghost() -> void:
 		_ghost = null
 	if not active:
 		return
-	_ghost = FurnitureCatalog.build(item_id, item_color.to_html(false), false)
-	MeshUtil.make_ghost(_ghost, Color(0.45, 0.85, 1.0, 0.5))
+	_ghost = FurnitureCatalog.build(item_id, item_color.to_html(false), false, item_style)
+	# Models keep their look so the style can be seen; shapes take a tint.
+	MeshUtil.make_ghost(_ghost, Color(0.45, 0.85, 1.0, 0.5), FurnitureCatalog.has_art(item_id))
 	house.add_child(_ghost)
 
 
@@ -61,7 +76,7 @@ func _process(delta: float) -> void:
 	_cell = house.world_to_cell(hit) if hit != null else Vector2i(-1, -1)
 	_ghost.visible = _cell.x >= 0
 	if _ghost.visible:
-		_ghost.position = house.cell_center(_cell.x, _cell.y)
+		_ghost.position = house.item_position(item_id, _cell.x, _cell.y, item_rotation)
 		_ghost.rotation_degrees.y = 90 * item_rotation
 
 
@@ -73,7 +88,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _cell.x >= 0:
-			if house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false)):
+			if house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
 				_edited()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			# A short right click removes; a right drag still orbits the camera.
