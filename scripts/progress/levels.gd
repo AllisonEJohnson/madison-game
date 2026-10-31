@@ -6,8 +6,9 @@ extends RefCounted
 ## math, so it is easy to tune and to test.
 ##
 ## There is one player level (no skill tracks). XP comes from playing:
-## picking up acorns, Star Chase, caring for your pet, decorating, exploring a
-## land for the first time, and coming back each day. Each new level pays some
+## picking up acorns, Star Chase, caring for your pet, making friends with
+## wild pets, decorating, exploring a land for the first time, and coming back
+## each day. Each new level pays some
 ## Acorns, and many also open something: a land, new things in the shop, or a
 ## gift. Shop items gated by level are listed in ShopCatalog (its "level" key).
 
@@ -22,12 +23,13 @@ const SOURCES := {
 	"star": {"xp": 2, "icon": "glowing_star", "how": "Catch a star in Star Chase"},
 	"feed_pet": {"xp": 4, "cooldown": 60.0, "icon": "meat_on_bone", "how": "Feed your pet"},
 	"play_pet": {"xp": 4, "cooldown": 60.0, "icon": "tennis", "how": "Play with your pet"},
+	"adopt_pet": {"xp": 40, "icon": "paw_prints", "how": "Make friends with a wild pet"},
 	"decorate": {"xp": 2, "daily": 20, "icon": "couch_and_lamp", "how": "Put something in your home"},
 	"explore": {"xp": 40, "icon": "compass", "how": "Visit a new place"},
 	"daily": {"xp": 25, "daily": 1, "icon": "sunflower", "how": "Come play each day"},
 }
 ## The order the level card lists them in (golden acorns are a surprise).
-const SOURCE_ORDER := ["acorn", "star", "feed_pet", "play_pet", "decorate", "explore", "daily"]
+const SOURCE_ORDER := ["acorn", "star", "feed_pet", "play_pet", "adopt_pet", "decorate", "explore", "daily"]
 
 ## Places that open at a level. Each is reached through a portal (see World).
 const AREAS := {
@@ -104,6 +106,9 @@ static func rewards(level: int) -> Array:
 		if int(AREAS[area]["level"]) == level:
 			out.append({"kind": "area", "area": area, "icon": AREAS[area]["icon"],
 				"text": "%s is open!" % AREAS[area]["name"]})
+			var pets := PetBuilder.wild_in(area).map(func(s): return PetBuilder.SPECIES[s]["name"].to_lower())
+			if not pets.is_empty():
+				out.append({"kind": "pets", "icon": "paw_prints", "text": "Wild pets to find: %s" % _list(pets)})
 	for key in GIFTS.get(level, []):
 		if ShopCatalog.is_item(key):
 			out.append({"kind": "gift", "key": key, "icon": "wrapped_gift", "text": "A gift: %s" % item_name(key)})

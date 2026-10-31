@@ -2,8 +2,8 @@ extends Node
 ## Headless multiplayer smoke test. Run a host and a client:
 ##   godot --headless --path . -- --host --smoke-test
 ##   godot --headless --path . -- --join=127.0.0.1 --smoke-test
-## The client edits its house, sends a phrase and puts on a hat from the shop;
-## both print what they see.
+## The client edits its house, sends a phrase, puts on a hat from the shop and
+## brings a new pet along; both print what they see.
 
 var _t := 0.0
 var _edited := false
@@ -24,6 +24,8 @@ func _process(delta: float) -> void:
 		world._send_phrase(2)
 		GameState.unlock([ShopCatalog.clothes_key("hat", 20)])
 		world._wear("hat", 20)
+		PetCollection.adopt("fox", "Pickles")
+		world._pets.choose("fox")
 	# The host starts about 3 seconds first. It reports after the client's edits
 	# and stays until the client has reported too.
 	if multiplayer.is_server() and _t > 10.0:
@@ -40,5 +42,8 @@ func _process(delta: float) -> void:
 		for id in world.player_avatars:
 			print("[smoke] peer %d: player %d changed avatar, hat %d" % [multiplayer.get_unique_id(), id,
 					world.player_avatars[id]["hat"]])
+		for player in world.get_node("Players").get_children():
+			print("[smoke] peer %d: player %s has a %s" % [multiplayer.get_unique_id(), player.name,
+					player.pet.config["species"]])
 		if not multiplayer.is_server():
 			get_tree().quit()

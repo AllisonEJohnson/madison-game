@@ -22,8 +22,12 @@ scripts/
   avatar/character_parts.gd   The licensed Cute Characters parts, costumes and animations
   avatar/part_colors.gd       Generated main color of each recolorable part (dev/part_colors.gd)
   avatar/tint.gdshader        Recolors one color of a part, for hair, clothes and skin colors
-  pets/pet_builder.gd         Pet config → 3D model (coats use the licensed animal models)
+  pets/pet_builder.gd         Every kind of pet (where it lives, its price, coats) and config → 3D model
   pets/pet.gd                 Follow behavior, needs, emotes, walk/run/idle animations
+  pets/pet_collection.gd      Your pets: which kinds you have, the one with you, finding and buying more
+  pets/wild_pets.gd           The wild pets of one land: who turns up where, and when
+  pets/wild_pet.gd            One wild pet: wanders, looks at you, says hi, hops away after making friends
+  pets/pet_keeper.gd          The world's side of pets: wild pets, making friends, switching pets online
   house/furniture_catalog.gd  Buildable items: footprints, styles (licensed models) and shape fallbacks
   house/house.gd              A plot: grid layout, place/remove, validation
   house/build_controller.gd   Mouse-driven build mode with ghost preview
@@ -43,6 +47,8 @@ scripts/
   ui/level_card.gd            Your level up close: progress, what's coming, ways to earn XP, Star Boost
   ui/level_up_card.gd         The level-up celebration, with confetti
   ui/admin_console.gd         Maker-only command box (` key) that grants currency, membership and XP
+  ui/pets_panel.gd            My pets: every kind, yours and the wild ones, with Bring along and Get now
+  ui/adopt_card.gd            Meeting a wild pet: name it, make friends, bring it along
   world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
   world/fantasy_land.gd       Starfall Glade, the fantasy land
   world/portal.gd             Walk-in portal between lands (locked until a level when its place needs one)
@@ -65,7 +71,9 @@ Everything a player owns is a small JSON-friendly Dictionary of option indices a
 - `avatar`: e.g. `{"hair": 5, "hair_color": "e26fb0", "face": 3, "top": 2, "top_color": "", ...}`
   (`""` keeps a part's own colors). Art and shape avatars have different choices, so the creator
   builds its tabs from `AvatarBuilder.tabs()` and `options(key)`.
-- `pet`: `{"species": 1, "coat": 2, "name": "Mochi", "color": "...", "accent": "...", "collar": "..."}`
+- `pet`: the pet with you, `{"species": "fox", "coat": 0, "name": "Mochi", "color": "...", "accent": "...",
+  "collar": "...", "fullness": 80.0, "happiness": 80.0}` (old saves stored a number for the species)
+- `pets`: your other pets, waiting at home, by kind: `{"cat": {...same as pet...}}`
 - `house`: list of `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f", "s": 3}` on a 12×12 grid
   (`r` quarter turns, `c` paint color for shape-built items, `s` style for items with models; big
   items like beds and sofas cover two cells)
@@ -217,8 +225,8 @@ data, and the `Progress` autoload keeps the player's XP in `GameState.profile` a
 **XP.** Level 2 takes 50 XP and each level after that 25 more than the last (level 10 is 1,350 XP in all;
 the top level is 50). Playing pays XP through `Progress.award(source)`, called from the same spots that pay
 Acorns: an acorn 3 (golden 10), a Star Chase star 2, feeding or playing with your pet 4 (once a minute
-each), putting something in your home 2 (20 times a day), the first visit to a new place 40, and the first
-visit each day 25. Each source is one line in `Levels.SOURCES`, with an optional `cooldown` (seconds) or
+each), making friends with a wild pet 40, putting something in your home 2 (20 times a day), the first visit
+to a new place 40, and the first visit each day 25. Each source is one line in `Levels.SOURCES`, with an optional `cooldown` (seconds) or
 `daily` cap; daily counts are saved with the date, cooldowns are not.
 
 **Rewards.** Every new level pays `20 + 5 × level` Acorns, and many also bring something
@@ -248,6 +256,38 @@ other window is open and no Star Chase game is running.
 Like the wallet, XP lives in the device's save for now; a game server should award XP and level rewards
 before levels unlock anything bought with real money.
 
+## Pets
+
+`PetBuilder.SPECIES` lists every kind of pet as data: its name, coats (licensed models with a scale each),
+sounds, a shape to build without the art, and for wild kinds the land it lives in (`land`), its Stardust
+price (`stardust`, left out for kinds that can only be found) and whether it's `rare`. Configs and saves
+name kinds by id (`"fox"`); saves from before used numbers, and the bunny and dragon (which had no models)
+became a koala and a pegasus, so no one lost a pet.
+
+**Having pets.** Cats, dogs and birds are everyone's from the start. The other 13 kinds live in the wild:
+3 in town, 6 in Starfall Glade and 4 in the Sky Garden, so the glade's and the garden's open at levels 2 and
+5 with their lands (the level-up card lists them). You have one pet of each kind; `PetCollection` keeps the
+one with you in `profile["pet"]` and the rest in `profile["pets"]`, each with its own name, coat and needs,
+and `switch_to()` swaps them.
+
+**Wild pets.** `WildPets` keeps a few pets out in each land (2 in town, 3 in the glade, 2 in the garden) at
+open spots, choosing kinds that live there; kinds you don't have turn up three times as often, rare ones a
+third as often. A pet wanders near its spot, stops to look at you when you come close, and wears a "New!"
+sparkle if you don't have its kind yet. Standing next to one offers "Say hi" (an `InteractZone`), which
+opens `AdoptCard`: it suggests a name from the safe list (with a dice for another), and "Make friends!" adds
+it to your pets, pays 40 XP and offers to bring it along. The wild pet then hops away, and another turns up
+somewhere else a little later; pets nobody is near also wander off now and then so lands don't go stale.
+Like acorns, wild pets exist only on the player's own device; a game server should check adoptions.
+
+**My pets** (`PetsPanel`, the paw button on the pet card) shows every kind with filters for each land:
+yours with Bring along, the rest with where they live (and the level their land opens at). 10 of the 13
+wild kinds can also be had at once for Stardust (25 in town, 40 to 50 in the glade, 60 in the garden), with
+the same second tap as other Stardust buys and, like other premium things, no level needed. The glimmer
+cub, the honey bear and the pegasus can only be found. The character creator's Pet tab lists the same
+kinds, so you can pick which pet comes along before you play.
+
+Admin console: `pets all` and `pets reset`. Test: `--host --pets-test`.
+
 ## Networking
 
 Listen-server model with Godot's high-level multiplayer API:
@@ -260,7 +300,9 @@ Listen-server model with Godot's high-level multiplayer API:
 3. Each player node has authority set to its owner. A `MultiplayerSynchronizer` replicates position and
    facing (20 times a second) and other peers smooth toward it.
 4. Pets are not networked: each peer runs the same follow logic from the owner's synced position.
-   Feeding and playing are sent as small "reaction" RPCs so everyone sees the emote.
+   Feeding and playing are sent as small "reaction" RPCs so everyone sees the emote. Bringing a different
+   pet along goes to the host like an outfit (`PetKeeper.submit_pet`), which sanitizes it and swaps that
+   player's pet on every peer; late joiners get the latest pets when they connect.
 5. House edits are applied locally right away, then sent to the host (debounced), which validates and
    broadcasts the layout. Late joiners receive the latest layouts on arrival.
 6. A changed outfit is sent to the host the same way (`submit_avatar`), which sanitizes it, limits how
@@ -293,6 +335,6 @@ same spawn and RPC code runs solo. Online play in the browser would need `WebSoc
 
 1. Dedicated headless server + account system + cloud saves.
 2. Change outfits in-world (wardrobe in your house), and visiting other homes with permissions.
-3. Pet tricks, pet beds that pets actually use, more species.
+3. Pet tricks, pet beds that pets actually use, more wild pets (and lands for them), more than one pet of a kind.
 4. Real art: swap the primitive builders for imported `.glb` models, keeping the same config format.
 5. More ways to earn: more mini-games and daily tasks.
