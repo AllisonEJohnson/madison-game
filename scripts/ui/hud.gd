@@ -22,6 +22,8 @@ signal zone_used
 signal shop_decorate(id: String, style: int)
 signal shop_wear(option: String, index: int)
 signal chase_again
+## From the Homes window: move into (or go to) one of your homes.
+signal home_chosen(type: String)
 
 ## Icons for the preset chat phrases (see SafeNames.CHAT_PHRASES).
 const PHRASE_ICONS := {
@@ -38,7 +40,8 @@ const HELP := [
 	["F", "meat_on_bone", "Feed your pet"], ["G", "tennis", "Play with your pet"],
 	["T", "speech_balloon", "Say something"], ["B", "couch_and_lamp", "Decorate your home"],
 	["H", "house", "Go to your home"], ["E", "shopping_bags", "Use a shop or game nearby"],
-	["Walk", "chestnut", "Pick up acorns to spend"], ["Esc", "door", "Leave"],
+	["Walk", "chestnut", "Pick up acorns to spend"], ["Homes", "house_with_garden", "Move homes, add rooms"],
+	["Esc", "door", "Leave"],
 ]
 ## Paints for furniture made from shapes (pieces without model styles).
 const HOUSE_COLORS := ["f1e7d6", "ffffff", "f7d9c4", "ffe8a3", "cdeac0", "bfe0f5", "d9c8f0", "f5c6d6",
@@ -86,6 +89,10 @@ var _buy_button: Button
 var _tools: HBoxContainer
 var _entries := {} # key -> entry
 var _shop: ShopPanel
+var _homes: HomesPanel
+var _build_title: Label
+var _build_count: Label
+var _build_tips: Array[Control] = [] # key tips in the banner, hidden when it's too wide
 var _prompt: PanelContainer
 var _prompt_icon: TextureRect
 var _prompt_title: Label
@@ -138,6 +145,7 @@ func _ready() -> void:
 	_result = _build_result()
 	_build_level_cards()
 	_build_shop()
+	_build_homes()
 	_build_prompt()
 	_build_game_bar()
 	# Both sit under the dimmed backdrop of the centered cards.
@@ -275,7 +283,8 @@ func _build_dock() -> void:
 		["Chat", "speech_balloon", "T", open_quick_chat],
 		["Decorate", "couch_and_lamp", "B", func(): build_toggled.emit()],
 		["Shop", "shopping_bags", "", func(): open_shop()],
-		["Home", "house", "H", func(): home_pressed.emit()],
+		["Homes", "house_with_garden", "", func(): open_homes()],
+		["Go home", "house", "H", func(): home_pressed.emit()],
 		["Help", "red_question_mark", "", func(): _show_only(_help)],
 		["Leave", "door", "Esc", ask_leave],
 	]
@@ -421,6 +430,45 @@ func _build_shop() -> void:
 	_shop.wear.connect(func(option, index): shop_wear.emit(option, index))
 	_shop.stardust_info.connect(func():
 		toast("The Stardust store is coming soon! A grown-up will help you get Stardust there."))
+
+
+func _build_homes() -> void:
+	_homes = _place(HomesPanel.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	_homes.visible = false
+	_homes.closed.connect(func(): _show_only(null))
+	_homes.home_chosen.connect(func(type):
+		_show_only(null)
+		home_chosen.emit(type))
+	_homes.stardust_info.connect(func():
+		toast("The Stardust store is coming soon! A grown-up will help you get Stardust there."))
+
+
+## Opens the Homes window on "homes" or "rooms" (the last tab by default).
+func open_homes(category := "") -> void:
+	_homes.open(category)
+	if not _homes.visible:
+		_show_only(_homes)
+
+
+## The decorating banner: which home, and how full it is.
+func set_build_home(home_name: String, count: int, capacity: int) -> void:
+	_build_title.text = "Decorating your %s" % home_name
+	_build_count.text = "%d / %d things" % [count, capacity]
+	_fit_build_bar()
+
+
+## Keeps the decorating banner centered and on screen: on a narrow window the
+## key tips go, last first.
+func _fit_build_bar() -> void:
+	for tip in _build_tips:
+		tip.visible = true
+	for i in range(_build_tips.size() - 1, -1, -1):
+		if _build_bar.get_combined_minimum_size().x <= _root.size.x - 32:
+			break
+		_build_tips[i].visible = false
+	var width := _build_bar.get_combined_minimum_size().x
+	_build_bar.offset_left = -width / 2
+	_build_bar.offset_right = width / 2
 
 
 ## A card above the dock that offers what's nearby, like a shop or a game.
@@ -569,7 +617,17 @@ func _build_build_mode() -> void:
 	var bar := UiTheme.hbox(14)
 	_build_bar.add_child(bar)
 	bar.add_child(UiTheme.texture_rect(UiTheme.icon("couch_and_lamp"), 34))
-	bar.add_child(UiTheme.label("Decorating your home", &"Heading", 22, Color.WHITE))
+	_build_title = UiTheme.label("Decorating your home", &"Heading", 22, Color.WHITE)
+	bar.add_child(_build_title)
+	# How full the home is: rooms make space for more.
+	_build_count = UiTheme.label("", &"KeyBadge", 15)
+	_build_count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_build_count.add_theme_stylebox_override("normal", UiTheme.box(Color(1, 1, 1, 0.22), 9, 0, Color.TRANSPARENT,
+			Vector4(9, 3, 9, 4)))
+	_build_count.add_theme_color_override("font_color", Color.WHITE)
+	_build_count.tooltip_text = "Things in your home, and how many fit. Add rooms to fit more."
+	_build_count.mouse_filter = Control.MOUSE_FILTER_PASS
+	bar.add_child(_build_count)
 	for tip in [["Click", "place"], ["Right-click", "remove"], ["R", "turn"], ["E", "next look"]]:
 		var pair := UiTheme.hbox(5)
 		var key := UiTheme.label(tip[0], &"KeyBadge", 13)
@@ -579,7 +637,15 @@ func _build_build_mode() -> void:
 		pair.add_child(key)
 		pair.add_child(UiTheme.label(tip[1], &"", 16, Color(1, 1, 1, 0.85)))
 		bar.add_child(pair)
+		_build_tips.append(pair)
+	var rooms := UiTheme.button("Rooms", "door", &"BlueButton", "Add rooms or move to another home")
+	rooms.custom_minimum_size.y = 40
+	rooms.add_theme_font_size_override("font_size", 17)
+	rooms.add_theme_constant_override("icon_max_width", 24)
+	rooms.pressed.connect(func(): open_homes("rooms"))
+	bar.add_child(rooms)
 	_build_bar.visible = false
+	_root.resized.connect(_fit_build_bar)
 
 	_drawer = UiTheme.card()
 	_drawer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
@@ -838,7 +904,7 @@ func _show_only(card: Control) -> void:
 
 
 func _cards() -> Array:
-	return [_phrases, _help, _leave, _result, _shop, _level_card, _level_up]
+	return [_phrases, _help, _leave, _result, _shop, _homes, _level_card, _level_up]
 
 
 func _process(delta: float) -> void:

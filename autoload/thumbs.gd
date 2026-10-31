@@ -28,6 +28,8 @@ const VIEWS := {
 	"back": Vector3(0.7, 0.2, -1.0),
 	"pet": Vector3(0.8, 0.4, 1.0),
 	"portrait": Vector3(0.3, 0.1, 1.0),
+	# A home from high up, to see into its rooms.
+	"home": Vector3(0.45, 1.5, 1.0),
 }
 
 var _cache := {} # key -> ImageTexture

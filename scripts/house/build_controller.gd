@@ -8,6 +8,8 @@ signal layout_edited(layout: Array)
 signal item_placed(key: String)
 ## Sent instead of placing when the picked look hasn't been bought yet.
 signal purchase_needed(id: String, style: int)
+## Sent instead of placing when the home holds all the furniture it can.
+signal home_full
 
 const SEND_DELAY := 0.3
 
@@ -31,6 +33,9 @@ var _send_timer := -1.0
 
 func set_active(on: bool) -> void:
 	active = on and house != null and player != null
+	# While decorating, outlines show where the home could grow.
+	if house:
+		house.set_decorating(active, Homes.plan_labels(house.home_type))
 	_refresh_ghost()
 
 
@@ -129,6 +134,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_edited()
 			elif not owns_item():
 				purchase_needed.emit(item_id, item_style)
+			elif house.is_full_for(item_id, _cell.x, _cell.y, item_rotation):
+				home_full.emit()
 			elif house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
 				_edited()
 				item_placed.emit("%s:%d" % [item_id, item_style])
@@ -142,6 +149,5 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _edited() -> void:
-	GameState.profile["house"] = house.layout.duplicate(true)
-	GameState.save_profile()
+	Homes.set_items(house.layout)
 	_send_timer = SEND_DELAY

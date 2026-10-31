@@ -2,8 +2,8 @@ extends Node
 ## Headless multiplayer smoke test. Run a host and a client:
 ##   godot --headless --path . -- --host --smoke-test
 ##   godot --headless --path . -- --join=127.0.0.1 --smoke-test
-## The client edits its house, sends a phrase and puts on a hat from the shop;
-## both print what they see.
+## The client edits its house, adds a room to it, sends a phrase and puts on a
+## hat from the shop; both print what they see.
 
 var _t := 0.0
 var _edited := false
@@ -20,10 +20,14 @@ func _process(delta: float) -> void:
 		var house: House = world._build.house
 		print("[smoke] client plot layout before: %d items" % house.layout.size())
 		house.place("sofa", 6, 6, 1, "ff00aa")
+		Homes.set_items(house.layout) # saved, as decorating does
 		world._submit_house(house.layout.duplicate(true))
 		world._send_phrase(2)
 		GameState.unlock([ShopCatalog.clothes_key("hat", 20)])
 		world._wear("hat", 20)
+		# Add a room to the home: everyone should see it on the plot.
+		var type := Homes.current()
+		GameState.unlock([HomeCatalog.room_key(type, HomeCatalog.addons(type)[0]["id"])])
 	# The host starts about 3 seconds first. It reports after the client's edits
 	# and stays until the client has reported too.
 	if multiplayer.is_server() and _t > 10.0:
@@ -35,7 +39,9 @@ func _process(delta: float) -> void:
 		for id in world.player_plots:
 			var plot: int = world.player_plots[id]
 			var has_sofa: bool = world.houses[plot].layout.any(func(i): return i["id"] == "sofa" and i["c"] == "ff00aa")
-			print("[smoke] peer %d: player %d plot %d items %d custom_sofa=%s" % [multiplayer.get_unique_id(), id, plot, world.houses[plot].layout.size(), has_sofa])
+			var house: House = world.houses[plot]
+			print("[smoke] peer %d: player %d plot %d %s %s items %d custom_sofa=%s" % [multiplayer.get_unique_id(),
+					id, plot, house.home_type, house.rooms, house.layout.size(), has_sofa])
 		print("[smoke] chat: ", world._hud._chat_lines)
 		for id in world.player_avatars:
 			print("[smoke] peer %d: player %d changed avatar, hat %d" % [multiplayer.get_unique_id(), id,

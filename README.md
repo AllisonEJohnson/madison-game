@@ -35,12 +35,13 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | WASD / arrows | Move |
 | Space | Jump |
 | Right mouse drag / wheel | Look around / zoom |
-| E | Use what's here: the shop counter, or Star Chase in Starfall Glade |
+| E | Use what's here: the shop counter, the signpost by your home, or Star Chase in Starfall Glade |
 | F / G | Feed / play with your pet |
 | T | Quick chat (preset phrases) |
 | B | Decorate your home (left click place, right click or the wastebasket removes, R turn, E next look) |
 | H | Go to your home |
 | Shop button | Open the shop (or click your wallet) |
+| Homes button | Buy homes, move into one, or add rooms (also from the decorating banner's Rooms button) |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
 
 Walk into the glowing portal west of the plaza to visit **Starfall Glade** (it opens at level 2), and through
@@ -49,7 +50,8 @@ its portal to come back. Tap the star on your player card to see your level and 
 **Admin console** (for the game's makers): press <kbd>`</kbd> (left of 1) to open it. It only exists when
 running from the editor or with `godot --path . -- --admin`. `stardust 500` grants premium currency,
 `acorns 500` grants earned currency, `member 30` adds 30 days of membership, `unlock all` owns everything in
-the shop (`unlock reset` takes it back, except what you wear or have placed), `wallet` shows balances,
+the shop, every home and every room (`unlock reset` takes it back, except what you wear or have placed and
+the home you live in with its rooms), `wallet` shows balances,
 `xp 100` gives XP, `level 5` jumps to a level (`level` alone shows it, `level reset` starts over as a new
 player), `boost 30` gives a 30-minute Star Boost, and `help` lists commands. Amounts can be negative to take
 currency or XP away. It changes this device's save only.
@@ -73,9 +75,15 @@ currency or XP away. It changes this device's save only.
 - **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
   each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
   with, and have fullness and happiness that slowly drop.
-- **Houses**: each player gets a 12×12 plot with a ready-built, furnished house. Players decorate it
-  with 18 kinds of furniture (beds, sofas, a fridge, a bathtub, an arcade machine and more), most in
-  several styles; the walls and floors stay as built. Homes save automatically.
+- **Homes**: each player gets a 12×12 plot with a ready-built, furnished home, starting with the free
+  Sprout Cottage. Players decorate it with 18 kinds of furniture (beds, sofas, a fridge, a bathtub, an
+  arcade machine and more), most in several styles; the walls and floors stay as built. Homes save
+  automatically.
+- **More homes and rooms**: the Homes window sells three more homes (the Oak Lookout under a giant oak,
+  the Sunpatch Safari Camp's tents around a campfire, and Toadstool Hollow among giant mushrooms) and rooms
+  to add to each, for Acorns once you reach their level, or for Stardust. Own as many as you like and move
+  between them; each keeps its own furniture. Every home holds a set number of things, and each room
+  added fits more. While decorating, rooms you could add show on your plot as outlines.
 - **Starfall Glade**: a fantasy land through a portal in town, with a crystal plaza, a mushroom village,
   a lily pond, a castle, floating islands and wandering fantasy animals.
 - **Earning**: Acorns float around town and Starfall Glade for anyone who walks into them (now and then a
@@ -124,6 +132,9 @@ godot --headless --path . -- --host --economy-test
 
 # Headless check of XP, level-ups, level-locked shop items and portals, and the Star Boost
 godot --headless --path . -- --host --levels-test
+
+# Headless check of every home's plan, buying homes and rooms, moving, capacity and old saves
+godot --headless --path . -- --host --homes-test
 
 # Two-process multiplayer smoke test (prints what each peer sees)
 godot --headless --path . -- --host --smoke-test &

@@ -107,6 +107,8 @@ static func rewards(level: int) -> Array:
 	for key in GIFTS.get(level, []):
 		if ShopCatalog.is_item(key):
 			out.append({"kind": "gift", "key": key, "icon": "wrapped_gift", "text": "A gift: %s" % item_name(key)})
+	for line in HomeCatalog.unlocked_at(level):
+		out.append({"kind": "home", "icon": line["icon"], "text": line["text"]})
 	var shop := ShopCatalog.unlocked_at(level)
 	if not shop.is_empty():
 		out.append({"kind": "shop", "icon": "shopping_bags", "text": "New in the shop: %s" % _list(shop)})

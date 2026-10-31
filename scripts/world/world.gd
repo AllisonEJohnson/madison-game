@@ -21,7 +21,9 @@ const SKY_PORTAL := Vector3(0, 0, -36)
 const LAND_NAMES := {"town": "Hometown", "glade": "Starfall Glade"}
 
 var houses: Array[House] = []
-var house_layouts := {} # peer id -> layout, kept on every peer
+## Each player's home as everyone sees it, kept on every peer:
+## peer id -> {"type", "rooms", "items"} (see HomeCatalog).
+var homes := {}
 var player_plots := {} # peer id -> plot index, kept on every peer
 var player_names := {} # peer id -> display name, kept on every peer
 ## Avatars changed since their players joined (by buying clothes), kept on
@@ -49,6 +51,7 @@ var _area_portals := {}
 var _lock_level := 0 # The level the portal locks were last set for.
 var _sky: SkyGarden
 var _in_sky := false
+var _build_home_shown := "" # What the decorating banner last said about the home.
 
 
 func _ready() -> void:
@@ -98,6 +101,9 @@ func _ready() -> void:
 		_hud.refresh_recent()
 		Progress.award("decorate"))
 	_build.purchase_needed.connect(_hud.need_purchase)
+	_build.home_full.connect(func(): _hud.toast("Your home is full! Add a room to fit more."))
+	_hud.home_chosen.connect(_visit_home)
+	GameState.owned_changed.connect(_refresh_own_home)
 	_hud.entry_chosen.connect(func(id, style):
 		_build.select_item(id, style)
 		_show_build_selection())
@@ -155,18 +161,18 @@ func _register(id: int, profile: Variant) -> void:
 		"name_parts": SafeNames.clean_name_parts(profile.get("name_parts")),
 		"avatar": AvatarBuilder.sanitize(profile.get("avatar")),
 		"pet": PetBuilder.sanitize(profile.get("pet")),
-		"house": House.sanitize_layout(profile.get("house")),
+		"home": HomeCatalog.sanitize(profile.get("home")),
 		"plot": plot,
 		"spawn": Vector3(randf_range(-4, 4), 0.5, randf_range(4, 7)),
 	}
 	_server_players[id] = data
 	# Late joiners get the newest layouts and looks (spawn data only holds the original).
 	if id != 1:
-		for other in house_layouts:
-			apply_house.rpc_id(id, other, house_layouts[other])
+		for other in homes:
+			apply_home.rpc_id(id, other, homes[other])
 		for other in player_avatars:
 			apply_avatar.rpc_id(id, other, player_avatars[other])
-	house_layouts[id] = data["house"]
+	homes[id] = data["home"]
 	_spawner.spawn(data)
 
 
@@ -183,12 +189,12 @@ func _spawn_player(data: Dictionary) -> Node:
 	var plot := int(d.get("plot", -1))
 	player_plots[id] = plot
 	player_names[id] = player.display_name
-	if not house_layouts.has(id):
-		house_layouts[id] = House.sanitize_layout(d.get("house"))
+	if not homes.has(id):
+		homes[id] = HomeCatalog.sanitize(d.get("home"))
 	if plot >= 0:
 		houses[plot].owner_id = id
 		houses[plot].set_owner_name(player.display_name)
-		houses[plot].set_layout(house_layouts[id])
+		houses[plot].set_home(homes[id])
 	player.tree_exiting.connect(_on_player_removed.bind(id))
 	if id == multiplayer.get_unique_id():
 		local_player = player
@@ -209,6 +215,7 @@ func _setup_local_player(player: Player) -> void:
 	if plot >= 0:
 		_build.house = houses[plot]
 		_build.player = player
+		houses[plot].sign_zone.enabled = true
 		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go there." % [player.display_name, plot + 1])
 	else:
 		_hud.toast("Welcome! The neighborhood is full, so you are visiting today.")
@@ -222,12 +229,12 @@ func _on_player_removed(id: int) -> void:
 	if plot >= 0 and houses[plot].owner_id == id:
 		houses[plot].owner_id = 0
 		houses[plot].set_owner_name("")
-		houses[plot].set_layout([])
+		houses[plot].clear()
 	if id != multiplayer.get_unique_id() and player_names.has(id):
 		_hud.add_chat("*", "%s left" % player_names[id])
 	player_plots.erase(id)
 	player_names.erase(id)
-	house_layouts.erase(id)
+	homes.erase(id)
 	player_avatars.erase(id)
 
 
@@ -242,36 +249,82 @@ func _on_peer_disconnected(id: int) -> void:
 		node.queue_free()
 
 
-# --- Houses ------------------------------------------------------------------
+# --- Homes ------------------------------------------------------------------------
+# Each player's plot shows the home they live in. Furniture edits, moving to
+# another home and new rooms all send the whole home to the host, which checks
+# it and tells everyone.
 
+## Furniture edits from decorating.
 func _submit_house(layout: Array) -> void:
+	var home := Homes.active()
+	home["items"] = layout
+	_submit_home(home)
+
+
+func _submit_home(home: Dictionary) -> void:
 	if multiplayer.is_server():
-		_receive_house(1, layout)
+		_receive_home(1, home)
 	else:
-		submit_house.rpc_id(1, layout)
+		submit_home.rpc_id(1, home)
 
 
 @rpc("any_peer", "reliable")
-func submit_house(layout: Array) -> void:
+func submit_home(home: Dictionary) -> void:
 	if multiplayer.is_server():
-		_receive_house(multiplayer.get_remote_sender_id(), layout)
+		_receive_home(multiplayer.get_remote_sender_id(), home)
 
 
-func _receive_house(id: int, layout: Variant) -> void:
+func _receive_home(id: int, home: Variant) -> void:
 	if not _server_players.has(id):
 		return
-	apply_house.rpc(id, House.sanitize_layout(layout))
+	apply_home.rpc(id, HomeCatalog.sanitize(home))
 
 
 @rpc("authority", "call_local", "reliable")
-func apply_house(id: int, layout: Array) -> void:
-	house_layouts[id] = layout
-	# The local player already sees their own edits; skip the echo.
+func apply_home(id: int, home: Dictionary) -> void:
+	homes[id] = home
+	# The local player already sees their own home; skip the echo.
 	if id == multiplayer.get_unique_id() and not multiplayer.is_server():
 		return
 	var plot: int = player_plots.get(id, -1)
 	if plot >= 0 and houses[plot].owner_id == id:
-		houses[plot].set_layout(layout)
+		houses[plot].set_home(home)
+
+
+func _own_house() -> House:
+	var plot: int = player_plots.get(local_player.peer_id, -1) if local_player else -1
+	return houses[plot] if plot >= 0 else null
+
+
+## From the Homes window: moves into that home if it isn't the one lived in,
+## then goes there.
+func _visit_home(type: String) -> void:
+	var house := _own_house()
+	if house == null:
+		_hud.toast("The neighborhood is full right now, so there's no plot for a home.")
+		return
+	if type != Homes.current():
+		if not Homes.move_in(type):
+			return
+		if _build.active:
+			_toggle_build()
+		house.set_home(Homes.active())
+		_submit_home(Homes.active())
+		_hud.toast("Welcome to your %s!" % HomeCatalog.home_name(type))
+	_go_home()
+
+
+## After buying something: a new room shows up on the plot right away.
+func _refresh_own_home() -> void:
+	var house := _own_house()
+	if house == null:
+		return
+	var home := Homes.active()
+	if home["type"] != house.home_type or home["rooms"] != house.rooms:
+		house.set_home(home)
+		_submit_home(home)
+		if _build.active:
+			house.set_decorating(true, Homes.plan_labels(house.home_type))
 
 
 # --- Avatars ---------------------------------------------------------------------
@@ -354,6 +407,8 @@ func _use_zone() -> void:
 	if _zone == _glade.chase.zone:
 		_hud.close_popups()
 		_glade.chase.start()
+	elif _zone.has_meta("homes"):
+		_hud.open_homes()
 	else:
 		_hud.open_shop()
 
@@ -512,6 +567,12 @@ func _process(delta: float) -> void:
 		if zone != _zone:
 			_zone = zone
 			_hud.show_prompt(zone)
+	if _build.active:
+		var shown := "%s:%d:%d" % [_build.house.home_type, _build.house.layout.size(), _build.house.capacity]
+		if shown != _build_home_shown:
+			_build_home_shown = shown
+			_hud.set_build_home(HomeCatalog.home_name(_build.house.home_type), _build.house.layout.size(),
+					_build.house.capacity)
 	_save_timer += delta
 	if _save_timer > 20.0:
 		_save_timer = 0.0
