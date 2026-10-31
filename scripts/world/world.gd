@@ -8,6 +8,9 @@ extends Node3D
 
 const PLOT_COUNT := 8
 const PHRASE_COOLDOWN := 1.0
+const AVATAR_COOLDOWN := 0.3
+## Acorns: spots to grow them on in each land, and how many are out at once.
+const ACORN_SPOTS := 48
 ## Starfall Glade sits this far off to the side of the town, out of sight.
 ## Being in the same scene keeps networking the same everywhere.
 const GLADE_ORIGIN := Vector3(600, 0, 0)
@@ -17,6 +20,9 @@ var houses: Array[House] = []
 var house_layouts := {} # peer id -> layout, kept on every peer
 var player_plots := {} # peer id -> plot index, kept on every peer
 var player_names := {} # peer id -> display name, kept on every peer
+## Avatars changed since their players joined (by buying clothes), kept on
+## every peer so late joiners see the new look.
+var player_avatars := {} # peer id -> avatar config
 var local_player: Player
 
 var _players: Node3D
@@ -25,11 +31,15 @@ var _hud: Hud
 var _build: BuildController
 var _server_players := {} # host only: peer id -> sanitized public profile
 var _last_phrase := {} # host only: peer id -> time of last phrase
+var _last_avatar := {} # host only: peer id -> time of last avatar change
 var _save_timer := 0.0
 var _land := "town" # Where the local player is: "town" or "glade".
 var _lands := {} # land -> its root node
 var _env: WorldEnvironment
 var _sun: DirectionalLight3D
+var _glade: FantasyLand
+var _pickups: Array[AcornPickups] = []
+var _zone: InteractZone # the one the local player stands in
 
 
 func _ready() -> void:
@@ -60,7 +70,15 @@ func _ready() -> void:
 	_hud.home_pressed.connect(_go_home)
 	_hud.pet_action.connect(_pet_action)
 	_hud.leave_confirmed.connect(func(): Net.back_to_menu())
+	_hud.zone_used.connect(_use_zone)
+	_hud.shop_decorate.connect(_decorate_with)
+	_hud.shop_wear.connect(_wear)
+	_hud.chase_again.connect(func(): _glade.chase.start())
 	GameState.wallet_changed.connect(_hud.set_wallet)
+	_glade.chase.ticked.connect(_hud.show_game)
+	_glade.chase.finished.connect(_on_chase_finished)
+	for pickups in _pickups:
+		pickups.collected.connect(_on_acorn)
 	if AdminConsole.enabled():
 		add_child(AdminConsole.new())
 	_build = BuildController.new()
@@ -69,6 +87,7 @@ func _ready() -> void:
 	_build.item_placed.connect(func(key):
 		GameState.add_recent(key)
 		_hud.refresh_recent())
+	_build.purchase_needed.connect(_hud.need_purchase)
 	_hud.entry_chosen.connect(func(id, style):
 		_build.select_item(id, style)
 		_show_build_selection())
@@ -131,10 +150,12 @@ func _register(id: int, profile: Variant) -> void:
 		"spawn": Vector3(randf_range(-4, 4), 0.5, randf_range(4, 7)),
 	}
 	_server_players[id] = data
-	# Late joiners get the newest layouts (spawn data only holds the original).
+	# Late joiners get the newest layouts and looks (spawn data only holds the original).
 	if id != 1:
 		for other in house_layouts:
 			apply_house.rpc_id(id, other, house_layouts[other])
+		for other in player_avatars:
+			apply_avatar.rpc_id(id, other, player_avatars[other])
 	house_layouts[id] = data["house"]
 	_spawner.spawn(data)
 
@@ -144,6 +165,8 @@ func _register(id: int, profile: Variant) -> void:
 func _spawn_player(data: Dictionary) -> Node:
 	var d := data.duplicate()
 	d["viewer_id"] = multiplayer.get_unique_id()
+	if player_avatars.has(int(d["id"])):
+		d["avatar"] = player_avatars[int(d["id"])]
 	var player := Player.new()
 	player.setup(d)
 	var id: int = player.peer_id
@@ -167,6 +190,9 @@ func _spawn_player(data: Dictionary) -> Node:
 
 func _setup_local_player(player: Player) -> void:
 	_hud.set_player(player.display_name, GameState.profile["avatar"])
+	for pickups in _pickups:
+		pickups.player = player
+	_glade.chase.player = player
 	_hud.set_pet(player.pet.config["name"], PetBuilder.species_name(player.pet.config), player.pet.config)
 	player.pet_needs_changed.connect(_hud.set_pet_needs)
 	var plot: int = player_plots.get(player.peer_id, -1)
@@ -191,6 +217,7 @@ func _on_player_removed(id: int) -> void:
 	player_plots.erase(id)
 	player_names.erase(id)
 	house_layouts.erase(id)
+	player_avatars.erase(id)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -198,6 +225,7 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	_server_players.erase(id)
 	_last_phrase.erase(id)
+	_last_avatar.erase(id)
 	var node := _players.get_node_or_null(str(id))
 	if node:
 		node.queue_free()
@@ -233,6 +261,98 @@ func apply_house(id: int, layout: Array) -> void:
 	var plot: int = player_plots.get(id, -1)
 	if plot >= 0 and houses[plot].owner_id == id:
 		houses[plot].set_layout(layout)
+
+
+# --- Avatars ---------------------------------------------------------------------
+# Clothes bought in the shop can be worn right away. Like houses, the host checks
+# the new look and tells everyone.
+
+func _submit_avatar(avatar: Dictionary) -> void:
+	if multiplayer.is_server():
+		_receive_avatar(1, avatar)
+	else:
+		submit_avatar.rpc_id(1, avatar)
+
+
+@rpc("any_peer", "reliable")
+func submit_avatar(avatar: Dictionary) -> void:
+	if multiplayer.is_server():
+		_receive_avatar(multiplayer.get_remote_sender_id(), avatar)
+
+
+func _receive_avatar(id: int, avatar: Variant) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if not _server_players.has(id) or now - float(_last_avatar.get(id, -10.0)) < AVATAR_COOLDOWN:
+		return
+	_last_avatar[id] = now
+	var clean := AvatarBuilder.sanitize(avatar)
+	_server_players[id]["avatar"] = clean
+	apply_avatar.rpc(id, clean)
+
+
+@rpc("authority", "call_local", "reliable")
+func apply_avatar(id: int, avatar: Dictionary) -> void:
+	var clean := AvatarBuilder.sanitize(avatar)
+	player_avatars[id] = clean
+	var player := _players.get_node_or_null(str(id)) as Player
+	if player:
+		player.set_avatar(clean)
+	if id == multiplayer.get_unique_id() and player:
+		_hud.set_player(player.display_name, clean)
+
+
+## Puts on clothes from the shop (only ones you own).
+func _wear(option: String, index: int) -> void:
+	if not GameState.owns(ShopCatalog.clothes_key(option, index)):
+		return
+	var avatar := AvatarBuilder.sanitize(ShopCatalog.try_on(GameState.profile["avatar"], option, index))
+	GameState.profile["avatar"] = avatar
+	GameState.save_profile()
+	_submit_avatar(avatar)
+	_hud.toast("Looking good!")
+
+
+# --- Earning and the shop -----------------------------------------------------------
+
+func _on_acorn(amount: int, golden: bool, _where: Vector3) -> void:
+	GameState.earn("acorns", amount)
+	if golden:
+		_hud.toast("A golden acorn! +%d Acorns" % amount)
+
+
+func _on_chase_finished(caught: int, reward: int) -> void:
+	var new_best := GameState.record_best("chase_best", caught)
+	GameState.earn("acorns", reward)
+	_hud.show_game_result(caught, reward, new_best)
+
+
+## The zone the local player is standing in, or null.
+func _zone_here() -> InteractZone:
+	if not local_player or not is_instance_valid(local_player):
+		return null
+	for zone: InteractZone in get_tree().get_nodes_in_group("interact_zones"):
+		if zone.reaches(local_player.global_position):
+			return zone
+	return null
+
+
+func _use_zone() -> void:
+	if not _zone or _build.active:
+		return
+	if _zone == _glade.chase.zone:
+		_hud.close_popups()
+		_glade.chase.start()
+	else:
+		_hud.open_shop()
+
+
+## From the shop's "Decorate" button: go home and pick that piece.
+func _decorate_with(id: String, style: int) -> void:
+	if not _build.active:
+		_toggle_build()
+	if _build.active:
+		_build.select_item(id, style)
+		_show_build_selection()
 
 
 # --- Chat and pets -----------------------------------------------------------
@@ -277,6 +397,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("build_style") and _build.active:
 		_build.step_style(1)
 		_show_build_selection()
+	elif event.is_action_pressed("interact") and not _build.active and _zone:
+		_use_zone()
 	elif event.is_action_pressed("quick_chat"):
 		_hud.open_quick_chat()
 	elif event.is_action_pressed("go_home"):
@@ -318,6 +440,8 @@ func _enter_land(land: String) -> void:
 	_sun.light_color = Lighting.LANDS[land]["sun"]
 	for key in _lands:
 		_lands[key].visible = key == land
+	if land != "glade":
+		_glade.chase.stop()
 	_hud.toast("Welcome to %s!" % LAND_NAMES[land])
 
 
@@ -348,6 +472,7 @@ func _toggle_build() -> void:
 	# Homes are in town, so decorating from another land takes you home first.
 	if not _build.active and land_at(local_player.global_position) != "town":
 		_go_home()
+	_glade.chase.stop()
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)
 	_show_build_selection()
@@ -362,6 +487,10 @@ func _process(delta: float) -> void:
 		var land := land_at(local_player.global_position)
 		if land != _land:
 			_enter_land(land)
+		var zone := _zone_here()
+		if zone != _zone:
+			_zone = zone
+			_hud.show_prompt(zone)
 	_save_timer += delta
 	if _save_timer > 20.0:
 		_save_timer = 0.0
@@ -395,6 +524,19 @@ func _build_environment() -> void:
 	glade.visible = false
 	add_child(glade)
 	_lands["glade"] = glade
+	_glade = glade
+	var shop := ShopStall.new()
+	shop.position = Scenery.SHOP_SPOT
+	shop.rotation.y = -PI / 2 # Faces the fountain.
+	town.add_child(shop)
+	# Acorns to find in both lands; they grow under each land so they hide with it.
+	var town_acorns := AcornPickups.new().setup(Scenery.acorn_spots(ACORN_SPOTS), 11)
+	town_acorns.name = "Acorns"
+	town.add_child(town_acorns)
+	var glade_acorns := AcornPickups.new().setup(glade.acorn_spots(ACORN_SPOTS), 22)
+	glade_acorns.name = "Acorns"
+	glade.add_child(glade_acorns)
+	_pickups.assign([town_acorns, glade_acorns])
 	var to_glade := Portal.new().setup("Starfall Glade", Color("b77cff"))
 	to_glade.position = Scenery.GLADE_PORTAL
 	to_glade.rotation.y = PI / 2 # Faces the plaza.

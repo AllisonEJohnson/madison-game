@@ -4,6 +4,10 @@ extends Node
 
 ## Fires when either currency balance or the membership changes.
 signal wallet_changed
+## Fires when something is bought or unlocked.
+signal owned_changed
+## Fires with the amount whenever currency is earned by playing, for the HUD.
+signal earned(currency: String, amount: int)
 
 const SAVE_PATH := "user://profile.json"
 const MAX_FAVORITES := 300
@@ -17,6 +21,7 @@ const CURRENCIES := {
 	"stardust": {"name": "Stardust", "icon": "shooting_star"},
 }
 const MAX_BALANCE := 9_999_999
+const MAX_OWNED := 3000
 
 var profile := {}
 
@@ -41,6 +46,11 @@ func default_profile() -> Dictionary:
 		"stardust": 0,
 		# Unix time the membership runs out; 0 means not a member.
 		"member_until": 0,
+		# Shop keys of things bought ("furniture:sofa:3", "avatar:hat:12").
+		# Free things are owned without being listed (see ShopCatalog).
+		"owned": [],
+		# The most stars caught in one game of Star Chase.
+		"chase_best": 0,
 	}
 
 
@@ -66,6 +76,12 @@ func load_profile() -> void:
 		profile[currency] = _clean_amount(data.get(currency))
 	var member_until = data.get("member_until")
 	profile["member_until"] = maxi(0, int(member_until)) if member_until is float else 0
+	if data.has("owned"):
+		profile["owned"] = _clean_owned(data.get("owned"))
+	else:
+		# Saved before the shop: keep everything already worn or placed.
+		profile["owned"] = ShopCatalog.priced_keys_in(profile["house"], profile["avatar"])
+	profile["chase_best"] = _clean_amount(data.get("chase_best"))
 
 
 func save_profile() -> void:
@@ -118,6 +134,63 @@ func spend(currency: String, amount: int) -> bool:
 	return true
 
 
+## True when the item is free or has been bought.
+func owns(key: String) -> bool:
+	return ShopCatalog.is_free(key) or key in profile["owned"]
+
+
+func can_afford(key: String) -> bool:
+	var p := ShopCatalog.price(key)
+	return p.is_empty() or balance(p["currency"]) >= int(p["amount"])
+
+
+## Pays for an item and keeps it. Returns false (and changes nothing) when it
+## is free, already owned, not a real item, or the balance is too low.
+func buy(key: String) -> bool:
+	var p := ShopCatalog.price(key)
+	if p.is_empty() or owns(key) or not ShopCatalog.is_item(key):
+		return false
+	if not spend(p["currency"], int(p["amount"])):
+		return false
+	unlock([key])
+	return true
+
+
+## Gives items without paying (admin console, tests).
+func unlock(keys: Array) -> void:
+	var owned: Array = profile["owned"]
+	for key in keys:
+		if ShopCatalog.is_item(key) and not ShopCatalog.is_free(key) and not (key in owned) and owned.size() < MAX_OWNED:
+			owned.append(key)
+	save_profile()
+	owned_changed.emit()
+
+
+## Takes back everything bought, except what is worn or placed right now.
+func reset_owned() -> void:
+	profile["owned"] = ShopCatalog.priced_keys_in(profile["house"], profile["avatar"])
+	save_profile()
+	owned_changed.emit()
+
+
+## Currency earned by playing (acorns found, games won). Like grant(), plus
+## the `earned` signal so the HUD can celebrate.
+func earn(currency: String, amount: int) -> void:
+	if amount <= 0:
+		return
+	grant(currency, amount)
+	earned.emit(currency, amount)
+
+
+## Keeps a best score (like "chase_best") and says whether `score` beat it.
+func record_best(key: String, score: int) -> bool:
+	if score <= int(profile.get(key, 0)):
+		return false
+	profile[key] = score
+	save_profile()
+	return true
+
+
 func is_member() -> bool:
 	return int(profile.get("member_until", 0)) > int(Time.get_unix_time_from_system())
 
@@ -142,6 +215,18 @@ func grant_membership(days: int) -> void:
 
 static func _clean_amount(data: Variant) -> int:
 	return clampi(int(data), 0, MAX_BALANCE) if data is float or data is int else 0
+
+
+static func _clean_owned(data: Variant) -> Array:
+	var out := []
+	if data is Array:
+		var seen := {}
+		for key in data:
+			if key is String and not seen.has(key) and out.size() < MAX_OWNED and ShopCatalog.is_item(key) \
+					and not ShopCatalog.is_free(key):
+				seen[key] = true
+				out.append(key)
+	return out
 
 
 static func _clean_keys(data: Variant, limit: int) -> Array:
@@ -180,6 +265,8 @@ func _register_inputs() -> void:
 		"build_rotate": [KEY_R],
 		"build_style": [KEY_E],
 		"go_home": [KEY_H],
+		# Uses a shop or game you are standing at. E is also "next look" while decorating.
+		"interact": [KEY_E],
 		"quick_chat": [KEY_T],
 		"menu": [KEY_ESCAPE],
 	}

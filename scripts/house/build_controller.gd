@@ -6,6 +6,8 @@ extends Node
 signal layout_edited(layout: Array)
 ## Sent after a successful placement with the entry key ("sofa:3").
 signal item_placed(key: String)
+## Sent instead of placing when the picked look hasn't been bought yet.
+signal purchase_needed(id: String, style: int)
 
 const SEND_DELAY := 0.3
 
@@ -41,6 +43,12 @@ func select_item(id: String, style := -1) -> void:
 	_styles[id] = item_style
 	erasing = false
 	_refresh_ghost()
+
+
+## True when the picked look is free or bought, so it can be placed.
+func owns_item() -> bool:
+	var style := item_style if FurnitureCatalog.has_art(item_id) else 0
+	return GameState.owns(ShopCatalog.furniture_key(item_id, style))
 
 
 func set_erasing(on: bool) -> void:
@@ -119,6 +127,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if erasing:
 				if house.remove_at(_cell.x, _cell.y):
 					_edited()
+			elif not owns_item():
+				purchase_needed.emit(item_id, item_style)
 			elif house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
 				_edited()
 				item_placed.emit("%s:%d" % [item_id, item_style])

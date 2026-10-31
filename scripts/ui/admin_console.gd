@@ -11,6 +11,8 @@ const HELP := [
 	"stardust <amount>   give premium currency (negative takes it away)",
 	"acorns <amount>     give earned currency (negative takes it away)",
 	"member <days>       add membership days (0 ends it)",
+	"unlock all          own everything in the shop",
+	"unlock reset        take back what was bought (keeps what you wear or placed)",
 	"wallet              show balances and membership",
 	"help                show this list",
 ]
@@ -102,13 +104,27 @@ func run(words: PackedStringArray) -> String:
 				return "Give a number of days, like: member 30"
 			GameState.grant_membership(arg.to_int())
 			return _wallet_text()
+		"unlock":
+			if arg == "all":
+				var keys := ShopCatalog.furniture_for_sale().map(
+						func(f): return ShopCatalog.furniture_key(f["id"], f["style"]))
+				keys.append_array(ShopCatalog.clothes_for_sale().map(
+						func(c): return ShopCatalog.clothes_key(c["option"], c["index"])))
+				GameState.unlock(keys)
+				return "Unlocked %d things. %s" % [keys.size(), _wallet_text()]
+			if arg == "reset":
+				GameState.reset_owned()
+				return "Took back what was bought. You own %d things." % GameState.profile["owned"].size()
+			return "Say unlock all, or unlock reset"
 	return "Unknown command. Type help for the list."
 
 
 func _wallet_text() -> String:
 	var days := GameState.member_days_left()
-	return "Acorns %d, Stardust %d, %s" % [GameState.balance("acorns"), GameState.balance("stardust"),
-			"member for %d more day%s" % [days, "" if days == 1 else "s"] if days > 0 else "not a member"]
+	return "Acorns %d, Stardust %d, %s, %d things bought" % [GameState.balance("acorns"),
+			GameState.balance("stardust"),
+			"member for %d more day%s" % [days, "" if days == 1 else "s"] if days > 0 else "not a member",
+			GameState.profile["owned"].size()]
 
 
 func _print(text: String) -> void:

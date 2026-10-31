@@ -4,8 +4,8 @@
 
 ```
 autoload/
-  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents, wallet and
-                     membership) saved to user://profile.json; input map
+  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents, wallet,
+                     things bought and membership) saved to user://profile.json; input map
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
   thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
 assets/
@@ -28,15 +28,23 @@ scripts/
   house/build_controller.gd   Mouse-driven build mode with ghost preview
   player/player.gd            Movement, camera, animation, network sync
   ui/ui_theme.gd              The shared look: palette, fonts, Theme, and button/card/label helpers
-  ui/item_grid.gd             Paged grid of picture cards with favorite stars
+  shop/shop_catalog.gd        Prices: what each look of furniture and each piece of clothing costs, and in which currency
+  ui/item_grid.gd             Paged grid of picture cards with favorite stars and price tags
   ui/catalog_browser.gd       Category rail + group chips + search + Favorites/Recent around an ItemGrid
   ui/swatch_row.gd            Color swatches plus a rainbow button for any color
   ui/main_menu.gd             Character creator, pet picker, name picker and play buttons
-  ui/hud.gd                   In-world UI: player and pet cards (with wallet), dock, chat, dialogs, build drawer
+  ui/hud.gd                   In-world UI: player and pet cards (with wallet), dock, chat, dialogs, build drawer,
+                              shop, the "press E" prompt and Star Chase's banner and result
+  ui/shop_panel.gd            The shop window: Home and Clothes sections around a CatalogBrowser
+  ui/buy_card.gd              One item up close with its price and a Buy button (shop and creator)
   ui/admin_console.gd         Maker-only command box (` key) that grants currency and membership
   world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
   world/fantasy_land.gd       Starfall Glade, the fantasy land
   world/portal.gd             Walk-in portal between lands
+  world/acorn_pickups.gd      Acorns to pick up around a land, the simplest way to earn
+  world/star_chase.gd         Star Chase, the catch-the-falling-stars game in Starfall Glade
+  world/interact_zone.gd      A spot that offers something to do ("Press E") when you stand in it
+  world/shop_stall.gd         The town's shop stall
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
   util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
@@ -56,6 +64,7 @@ Everything a player owns is a small JSON-friendly Dictionary of option indices a
   (`r` quarter turns, `c` paint color for shape-built items, `s` style for items with models; big
   items like beds and sofas cover two cells)
 - `name_parts`: `{"adjective": 3, "noun": 7, "number": 42}` → "CozyKoala42"
+- `owned`: shop keys of everything bought, like `"furniture:sofa:3"` and `"avatar:hat:20"`
 
 Adding a hat or hairstyle from the character pack is one entry in a `CharacterParts` list; a new
 furniture piece is one `FurnitureCatalog` entry. Builders also have a `sanitize()` that clamps any config to valid values.
@@ -155,6 +164,40 @@ admin console (debug builds or `--admin`) grants Stardust and membership. Before
 wallets must move to the game server, which would grant Stardust only after a verified payment receipt;
 a saved file on a player's device can be edited, so it can't be trusted with anything bought.
 
+## Earning and the shop
+
+**Prices.** `ShopCatalog` holds every price as a few rules rather than a list of hundreds of items. Each
+furniture piece and each kind of clothing has an Acorn price, a `free` count (the first looks of a piece,
+or the first choices of a kind, cost nothing) and a short `stardust` list of special looks that cost
+Stardust instead. Everything else in the creator (faces, body, skin, eyes and every color) is free. An
+item is named by a shop key, `"furniture:<id>:<style>"` or `"avatar:<option>:<index>"`, and
+`ShopCatalog.price(key)` returns `{currency, amount}`, or nothing when it's free. Looks used by the starter
+home and the default character are always free.
+
+**Owning.** `GameState.profile["owned"]` lists the keys bought. `GameState.buy(key)` checks the price,
+spends it and adds the key; `owns(key)` is true for free things too. A save from before the shop keeps
+whatever it already had placed or was wearing (`ShopCatalog.priced_keys_in`), so no one loses anything.
+Build mode only places owned looks (others show a Buy button), and the creator lets you try on anything
+but only keep what you own, with a "Get this?" card for the rest.
+
+**Earning.** Acorns come from playing:
+
+- `AcornPickups` keeps about ten acorns floating at open spots in a land (5 Acorns, or 25 for the odd
+  golden one) and regrows each one somewhere else after 15 to 35 seconds. The town and the glade each
+  have their own.
+- `StarChase` is a 45-second game on the ring by the glade's portal: catch falling stars for 3 Acorns
+  each, plus 15 more for catching ten. An arrow over your head points to the next star, and the best
+  score is kept in the profile.
+
+Both run only on the player's own device and pay through `GameState.earn()`, like the rest of the wallet,
+and the HUD shows a "+5" by the wallet. Once wallets move to a server, the server should place acorns and
+check catches before paying.
+
+**The shop.** The shop stall in town and its twin in the glade's market are `InteractZone`s: standing
+there shows "Press E" and opens `ShopPanel`, which also opens from the dock's Shop button or a click on
+the wallet. Bought clothes are worn through `World.submit_avatar`, so everyone sees the new look. Things
+that cost Stardust ask "Spend N Stardust?" before buying, so a stray tap can't spend real money.
+
 ## Networking
 
 Listen-server model with Godot's high-level multiplayer API:
@@ -170,6 +213,8 @@ Listen-server model with Godot's high-level multiplayer API:
    Feeding and playing are sent as small "reaction" RPCs so everyone sees the emote.
 5. House edits are applied locally right away, then sent to the host (debounced), which validates and
    broadcasts the layout. Late joiners receive the latest layouts on arrival.
+6. A changed outfit is sent to the host the same way (`submit_avatar`), which sanitizes it, limits how
+   often it changes, and rebuilds that player's avatar on every peer. Late joiners spawn with it.
 
 The host is the only authority for anything shared, and it re-validates every message.
 
@@ -200,4 +245,4 @@ same spawn and RPC code runs solo. Online play in the browser would need `WebSoc
 2. Change outfits in-world (wardrobe in your house), and visiting other homes with permissions.
 3. Pet tricks, pet beds that pets actually use, more species.
 4. Real art: swap the primitive builders for imported `.glb` models, keeping the same config format.
-5. Furniture catalog with unlockable items earned from mini-games.
+5. More ways to earn: more mini-games, daily tasks and levels.

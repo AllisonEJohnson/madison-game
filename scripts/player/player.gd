@@ -31,6 +31,7 @@ var _air_time := 0.0
 var _last_pos := Vector3.ZERO
 var _bubble: Label3D
 var _bubble_time := 0.0
+var _name_label: Label3D
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -59,13 +60,13 @@ func setup(data: Dictionary) -> void:
 	_model.add_child(_avatar)
 	var head_top := AvatarBuilder.head_top(avatar_config)
 
-	var label := Label3D.new()
-	label.text = display_name
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position.y = head_top + 0.35
-	label.pixel_size = 0.005
-	label.outline_size = 10
-	add_child(label)
+	_name_label = Label3D.new()
+	_name_label.text = display_name
+	_name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_name_label.position.y = head_top + 0.35
+	_name_label.pixel_size = 0.005
+	_name_label.outline_size = 10
+	add_child(_name_label)
 
 	_bubble = Label3D.new()
 	_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -185,6 +186,18 @@ func _animate(delta: float, speed: float, climb: float) -> void:
 		var node := _avatar.get_node_or_null(limb[0]) as Node3D
 		if node:
 			node.rotation.x = lerpf(node.rotation.x, swing * limb[1], minf(12.0 * delta, 1.0))
+
+
+## Dresses the character in a new avatar config (say, after buying a hat).
+func set_avatar(config: Dictionary) -> void:
+	var avatar_config := AvatarBuilder.sanitize(config)
+	if _avatar:
+		_avatar.free()
+	_avatar = AvatarBuilder.build(avatar_config)
+	_model.add_child(_avatar)
+	var head_top := AvatarBuilder.head_top(avatar_config)
+	_name_label.position.y = head_top + 0.35
+	_bubble.position.y = head_top + 0.7
 
 
 func teleport(world_pos: Vector3) -> void:

@@ -12,7 +12,7 @@ var _missing := 0
 func _init() -> void:
 	var keep := {}
 	for path in FurnitureCatalog.art_paths() + PetBuilder.art_paths() + Scenery.art_paths() + AvatarBuilder.art_paths() \
-			+ FantasyLand.art_paths():
+			+ FantasyLand.art_paths() + ShopStall.art_paths():
 		_keep(Art.ROOT + path + ".tscn", keep)
 	var removed := _prune(Art.ROOT, keep)
 	_trim_animations(Art.ROOT + CharacterParts.ANIMATIONS, CharacterParts.CLIPS.values())

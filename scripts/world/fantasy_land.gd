@@ -20,6 +20,12 @@ const VILLAGE := Vector3(-30, 0, 4)
 const POND := Vector3(30, 0, 8)
 const POND_RADIUS := 9.0
 const CASTLE_Z := -50.0
+## The Star Chase ring, beside the path just past the portal, so it's the
+## first thing you see on arriving. Stars fall around the market and plaza.
+const CHASE_SPOT := Vector3(-5, 0, 38.5)
+const CHASE_FIELD := Vector3(0, 0, 22)
+## The market stall that is the glade's shop, and which way it faces.
+const SHOP_STALL := Vector3(-7, 0, 31)
 
 const GRASS := Color("74cf8e")
 const PATH := Color("efdcc0")
@@ -111,6 +117,9 @@ void fragment() {
 """
 
 var portal: Portal
+var chase: StarChase
+## Offers the shop at the market stall nearest the portal.
+var shop_zone: InteractZone
 var _floaters: Array[Dictionary] = [] # {node, base, phase, speed, height}
 var _walkers: Array[Dictionary] = [] # {node, center, radius, speed, angle}
 var _time := 0.0
@@ -141,7 +150,12 @@ func _ready() -> void:
 	portal.position = PORTAL_SPOT
 	portal.rotation.y = PI
 	add_child(portal)
+	chase = StarChase.new()
+	chase.position = CHASE_SPOT
+	chase.field_center = CHASE_FIELD - CHASE_SPOT
+	add_child(chase)
 	var fancy := Art.has(DIR + TREES[0])
+	_shop(fancy)
 	_pond(fancy)
 	if fancy:
 		_plaza()
@@ -295,8 +309,7 @@ func _castle() -> void:
 func _market() -> void:
 	var sign := _put(PROPS["sign"], PORTAL_SPOT + Vector3(3.6, 0, -6), PI * 0.8, 2.6)
 	_solid(sign, 0.6)
-	var stalls := [["stall_a", Vector3(-7, 0, 31), PI / 2], ["stall_b", Vector3(7.2, 0, 26), -PI / 2],
-		["stall_c", Vector3(-7, 0, 20), PI / 2]]
+	var stalls := [["stall_b", Vector3(7.2, 0, 26), -PI / 2], ["stall_c", Vector3(-7, 0, 20), PI / 2]]
 	for s in stalls:
 		var stall := _put(PROPS[s[0]], s[1], s[2], 2.7)
 		_solid(stall, 0.8)
@@ -310,6 +323,44 @@ func _market() -> void:
 	for i in 3:
 		var a := TAU * i / 3.0 + 0.5
 		_put(PROPS["log"], fire_spot + Vector3(cos(a), 0, sin(a)) * 2.3, -a, 0.6)
+
+
+## The market stall by the portal is a shop. Without the licensed art a stall
+## made of shapes stands there instead.
+func _shop(fancy: bool) -> void:
+	if not fancy:
+		var stall := ShopStall.new()
+		stall.position = SHOP_STALL
+		stall.rotation.y = PI / 2
+		add_child(stall)
+		shop_zone = stall.zone
+		return
+	var model := _put(PROPS["stall_a"], SHOP_STALL, PI / 2, 2.7)
+	_solid(model, 0.8)
+	var sign := Label3D.new()
+	sign.text = "Shop"
+	sign.font = UiTheme.font(700, true)
+	sign.font_size = 72
+	sign.pixel_size = 0.008
+	sign.outline_size = 18
+	sign.outline_modulate = Color(0.16, 0.1, 0.3)
+	sign.modulate = Color("fff3b0")
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	sign.position = SHOP_STALL + Vector3(0, 3.6, 0)
+	add_child(sign)
+	shop_zone = InteractZone.new().setup("Shop", "Furniture and clothes", "shopping_bags", "Shop", 2.0)
+	shop_zone.position = SHOP_STALL + Vector3(2.4, 0, 0)
+	add_child(shop_zone)
+
+
+## Open spots for acorns, the same for everyone.
+func acorn_spots(count: int) -> Array[Vector3]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5150
+	var out: Array[Vector3] = []
+	for i in count:
+		out.append(_open_spot(rng, 1.0))
+	return out
 
 
 func _animals() -> void:

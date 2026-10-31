@@ -44,6 +44,8 @@ const FANTASY_FLOWERS := ["vegetation/fabulous_plant_001", "vegetation/fabulous_
 	"vegetation/fabulous_plant_008", "vegetation/fabulous_plant_010"]
 ## Where the portal to Starfall Glade stands, west of the plaza.
 const GLADE_PORTAL := Vector3(-21, 0, 0)
+## The shop stall on the east side of the plaza, facing the fountain.
+const SHOP_SPOT := Vector3(7.6, 0, 0)
 
 static var _fantasy := false
 
@@ -127,6 +129,19 @@ static func build(ground: Node3D) -> void:
 				flower.scale = Vector3.ONE * 1.6 * rng.randf_range(0.8, 1.2)
 				ground.add_child(flower)
 			_no_shadow(flower)
+
+
+## Open spots for acorns, the same for everyone: anywhere but the plots, the
+## roads and the fountain, and not deep in the woods at the edge.
+static func acorn_spots(count: int) -> Array[Vector3]:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2024
+	var out: Array[Vector3] = []
+	while out.size() < count:
+		var p := _open_spot(rng, 5.0)
+		if absf(p.x) < 50.0 and absf(p.z) < 50.0:
+			out.append(p)
+	return out
 
 
 ## A random spot on the grass, away from the plots, the roads and the plaza.

@@ -7,7 +7,8 @@ extends HBoxContainer
 ##
 ## Items are Dictionaries with a "key" and a "name", plus one of: "thumb" (a
 ## Callable returning a Texture2D), "icon" (an icon name), or neither for a
-## word card. Optional: "tooltip".
+## word card. Optional: "tooltip", and "tag", a little label in the card's
+## top-left corner such as a price: {"text", "icon", "color" (background)}.
 
 signal chosen(key: String)
 signal favorite_toggled(key: String, on: bool)
@@ -216,6 +217,21 @@ func _make_card() -> Button:
 	words.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(words)
+	var tag := PanelContainer.new()
+	tag.name = "Tag"
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.position = Vector2(4, 4)
+	var tag_row := UiTheme.hbox(2)
+	tag_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_child(tag_row)
+	var tag_icon := UiTheme.texture_rect(null, 16)
+	tag_icon.name = "Icon"
+	tag_row.add_child(tag_icon)
+	var tag_text := UiTheme.label("", &"", 13)
+	tag_text.name = "Text"
+	tag_text.add_theme_font_override("font", UiTheme.font(800))
+	tag_row.add_child(tag_text)
+	card.add_child(tag)
 	var star := TextureButton.new()
 	star.name = "Star"
 	star.texture_normal = UiTheme.icon("star")
@@ -289,7 +305,25 @@ func _show_item(card: Button, item: Dictionary) -> void:
 		words.offset_bottom = 0
 		words.add_theme_font_size_override("font_size", 18)
 		words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_show_tag(card, item.get("tag", {}))
 	_show_star(card)
+
+
+func _show_tag(card: Button, tag: Dictionary) -> void:
+	var panel := card.get_node("Tag") as PanelContainer
+	panel.visible = not tag.is_empty()
+	if tag.is_empty():
+		return
+	var color: Color = tag.get("color", UiTheme.PAPER_DIM)
+	panel.add_theme_stylebox_override("panel", UiTheme.box(color, 9, 0, Color.TRANSPARENT, Vector4(4, 1, 6, 1)))
+	var icon := panel.find_child("Icon", true, false) as TextureRect
+	icon.visible = tag.has("icon")
+	if tag.has("icon"):
+		icon.texture = UiTheme.icon(tag["icon"])
+	var text := panel.find_child("Text", true, false) as Label
+	text.text = tag.get("text", "")
+	text.visible = text.text != ""
+	panel.reset_size()
 
 
 func _show_star(card: Button) -> void:

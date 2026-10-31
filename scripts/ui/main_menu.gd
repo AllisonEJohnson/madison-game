@@ -3,6 +3,8 @@ extends Control
 ## in a 3D scene that fills the screen; your name and the play buttons float
 ## on the left, and the style card on the right. The style card's tabs come
 ## from AvatarBuilder.tabs(), so new options show up without menu changes.
+## Clothes from the shop show their price; picking one tries it on and offers
+## to buy it (see BuyCard).
 
 const PET_COLORS := ["e8a35a", "c49a6c", "8d5b3a", "fff3e0", "ffffff", "8a8a8a", "1f1f1f", "f2c94c",
 		"e04848", "eb5f9a", "9b51e0", "3f7fd9", "56ccf2", "6fcf97", "2fa37a", "f2994a"]
@@ -36,6 +38,12 @@ var _content: VBoxContainer
 var _tab := 0
 var _part := 0
 var _option_grid: ItemGrid
+## The "Get this?" card shown in place of the left column while trying on
+## something not bought yet.
+var _offer_card: PanelContainer
+var _buy: BuyCard
+var _offer_option := ""
+var _offer_index := 0
 
 
 func _ready() -> void:
@@ -75,6 +83,8 @@ func _ready() -> void:
 	add_child(_scrim)
 	_name_picker = _build_name_picker()
 	add_child(_name_picker)
+	_offer_card = _build_offer()
+	add_child(_offer_card)
 
 	_rebuild_preview()
 	_show_tab(0)
@@ -87,6 +97,8 @@ func _handle_command_line() -> void:
 	var args := OS.get_cmdline_user_args()
 	if "--smoke-test" in args:
 		get_tree().root.add_child(load("res://scripts/dev/smoke_test.gd").new())
+	if "--economy-test" in args:
+		get_tree().root.add_child(load("res://scripts/dev/economy_test.gd").new())
 	for arg in args:
 		if arg.begins_with("--screenshot="):
 			var shot: Node = load("res://scripts/dev/screenshot.gd").new()
@@ -97,6 +109,8 @@ func _handle_command_line() -> void:
 			for ui in args:
 				if ui.begins_with("--shot-ui="):
 					shot.ui_steps.assign(ui.trim_prefix("--shot-ui=").split(","))
+				elif ui.begins_with("--shot-wait="):
+					shot.wait = float(ui.trim_prefix("--shot-wait="))
 			get_tree().root.add_child(shot)
 	for arg in args:
 		if arg == "--host":
@@ -342,6 +356,104 @@ func _close_name_picker() -> void:
 	_scrim.visible = false
 
 
+# --- Trying on and buying clothes ---------------------------------------------------
+
+func _build_offer() -> PanelContainer:
+	var card := UiTheme.card()
+	card.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	card.position.x = 20
+	card.custom_minimum_size.x = 340
+	card.visible = false
+	var box := UiTheme.vbox(10)
+	card.add_child(box)
+	var head := UiTheme.hbox(10)
+	box.add_child(head)
+	head.add_child(UiTheme.texture_rect(UiTheme.icon("shopping_bags"), 36))
+	var title := UiTheme.label("Get this?", &"Heading", 26)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var close := UiTheme.icon_button("cross_mark", "Not now", 44)
+	close.add_theme_constant_override("icon_max_width", 22)
+	close.pressed.connect(_close_offer)
+	head.add_child(close)
+	_buy = BuyCard.new(140)
+	_buy.bought.connect(func(_key):
+		var option := _offer_option
+		_close_offer()
+		_wear(option, _offer_index)
+		if _option_grid:
+			var part: Dictionary = _tabs[_tab]["parts"][_part]
+			_option_grid.set_items(_option_items(part["key"], part["view"]), true))
+	box.add_child(_buy)
+	var later := UiTheme.button("Not now", "cross_mark", &"", "Take it off again")
+	later.custom_minimum_size.y = 50
+	later.pressed.connect(_close_offer)
+	box.add_child(later)
+	return card
+
+
+func _on_option_chosen(key: String, index: int) -> void:
+	if GameState.owns(ShopCatalog.clothes_key(key, index)):
+		_close_offer()
+		_wear(key, index)
+	else:
+		_offer(key, index)
+
+
+## Puts a choice on, taking off a costume or outfit that would hide it.
+func _wear(key: String, index: int) -> void:
+	_profile["avatar"] = ShopCatalog.try_on(_profile["avatar"], key, index)
+	_set_avatar(key, index)
+
+
+## Tries a choice on in the preview and offers to buy it.
+func _offer(key: String, index: int) -> void:
+	_offer_option = key
+	_offer_index = index
+	var config := ShopCatalog.try_on(_profile["avatar"], key, index)
+	_rebuild_preview(config)
+	var part: Dictionary = _tabs[_tab]["parts"][_part]
+	var view: String = part["view"]
+	var picture := ShopPanel.avatar_thumb(_with_choice(key, index), view)
+	_buy.show_item(ShopCatalog.clothes_key(key, index), ShopCatalog.clothes_name(key, index), picture)
+	_left.visible = false
+	_offer_card.visible = true
+
+
+## Takes off whatever was being tried on.
+func _close_offer() -> void:
+	if not _offer_card.visible:
+		return
+	_offer_card.visible = false
+	_left.visible = true
+	_offer_option = ""
+	_rebuild_preview()
+	if _option_grid:
+		var part: Dictionary = _tabs[_tab]["parts"][_part]
+		_option_grid.select(str(int(_profile["avatar"].get(part["key"], 0))), false)
+
+
+## The avatar with one choice changed, the way the option pictures show it.
+func _with_choice(key: String, index: int) -> Dictionary:
+	var config: Dictionary = _profile["avatar"].duplicate()
+	config[key] = index
+	return config
+
+
+## Swaps anything not owned for a random free choice (for "Surprise me").
+func _owned_only(config: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	for option in ShopCatalog.CLOTHES:
+		if not config.has(option) or GameState.owns(ShopCatalog.clothes_key(option, int(config[option]))):
+			continue
+		var owned := []
+		for i in AvatarBuilder.options(option).size():
+			if GameState.owns(ShopCatalog.clothes_key(option, i)):
+				owned.append(i)
+		config[option] = owned[rng.randi() % owned.size()] if not owned.is_empty() else 0
+	return config
+
+
 func _play() -> void:
 	GameState.save_profile()
 	Net.request_host(int(_port.value))
@@ -422,10 +534,11 @@ func _view_target() -> Vector3:
 	return Vector3(0, face * 0.57, 0)
 
 
-func _rebuild_preview() -> void:
+## Shows your character, or `avatar` instead while trying something on.
+func _rebuild_preview(avatar := {}) -> void:
 	for child in _preview_root.get_children():
 		child.free()
-	_preview_root.add_child(AvatarBuilder.build(_profile["avatar"]))
+	_preview_root.add_child(AvatarBuilder.build(_profile["avatar"] if avatar.is_empty() else avatar))
 	var pet := PetBuilder.build(_profile["pet"])
 	# In front of the avatar, so it stays in the gap between the cards.
 	pet.position = Vector3(0.5, 0, 0.7)
@@ -505,6 +618,7 @@ func _show_tab(i: int) -> void:
 
 
 func _show_part(j: int) -> void:
+	_close_offer()
 	var parts: Array = _tabs[_tab]["parts"]
 	_part = clampi(j, 0, parts.size() - 1)
 	for k in _part_row.get_child_count():
@@ -539,7 +653,7 @@ func _add_option_grid(part: Dictionary) -> void:
 	_option_grid.show_names = true
 	_option_grid.select(str(int(_profile["avatar"].get(key, 0))))
 	_option_grid.set_items(_option_items(key, view))
-	_option_grid.chosen.connect(func(k): _set_avatar(key, int(k)))
+	_option_grid.chosen.connect(func(k): _on_option_chosen(key, int(k)))
 
 
 ## One card per choice, each showing you with that choice and your colors.
@@ -550,7 +664,7 @@ func _option_items(key: String, view: String) -> Array:
 		var config: Dictionary = _profile["avatar"].duplicate()
 		config[key] = i
 		var thumb_key := "avatar:%s:%s" % [view, JSON.stringify(config).md5_text()]
-		items.append({"key": str(i), "name": str(choices[i]),
+		items.append({"key": str(i), "name": str(choices[i]), "tag": BuyCard.price_tag(ShopCatalog.clothes_key(key, i)),
 			"thumb": func(): return Thumbs.texture(thumb_key, func(): return AvatarBuilder.build(config), view)})
 	return items
 
@@ -688,7 +802,7 @@ func _set_pet(key: String, value: Variant) -> void:
 func _randomize() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	_profile["avatar"] = AvatarBuilder.random_config(rng)
+	_profile["avatar"] = _owned_only(AvatarBuilder.random_config(rng), rng)
 	GameState.save_profile()
 	_rebuild_preview()
 	_show_part(_part)
