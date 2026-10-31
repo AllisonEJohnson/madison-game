@@ -1,6 +1,7 @@
 extends Node
-## Holds the local player's saved profile (name, avatar, pet, house, wallet)
-## and registers input actions so the project file stays small.
+## Holds the local player's saved profile (name, avatar, pet, house, wallet,
+## level) and registers input actions so the project file stays small. The
+## level's own logic is in the Progress autoload.
 
 ## Fires when either currency balance or the membership changes.
 signal wallet_changed
@@ -51,7 +52,7 @@ func default_profile() -> Dictionary:
 		"owned": [],
 		# The most stars caught in one game of Star Chase.
 		"chase_best": 0,
-	}
+	}.merged(Levels.new_save())
 
 
 func load_profile() -> void:
@@ -82,6 +83,7 @@ func load_profile() -> void:
 		# Saved before the shop: keep everything already worn or placed.
 		profile["owned"] = ShopCatalog.priced_keys_in(profile["house"], profile["avatar"])
 	profile["chase_best"] = _clean_amount(data.get("chase_best"))
+	profile.merge(Levels.clean_save(data), true)
 
 
 func save_profile() -> void:
@@ -145,10 +147,11 @@ func can_afford(key: String) -> bool:
 
 
 ## Pays for an item and keeps it. Returns false (and changes nothing) when it
-## is free, already owned, not a real item, or the balance is too low.
+## is free, already owned, not a real item, needs a higher level, or the
+## balance is too low.
 func buy(key: String) -> bool:
 	var p := ShopCatalog.price(key)
-	if p.is_empty() or owns(key) or not ShopCatalog.is_item(key):
+	if p.is_empty() or owns(key) or not ShopCatalog.is_item(key) or ShopCatalog.level_locked(key):
 		return false
 	if not spend(p["currency"], int(p["amount"])):
 		return false

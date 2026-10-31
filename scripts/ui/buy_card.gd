@@ -13,6 +13,7 @@ signal action_pressed(key: String)
 const ACORN_TAG := Color("ffe9c7")
 const STARDUST_TAG := Color("eadcff")
 const OWNED_TAG := Color("d4f4dd")
+const LOCKED_TAG := Color("e4e1ec")
 const CONFIRM_TIME := 4.0
 
 var key := ""
@@ -72,6 +73,7 @@ func _init(picture_size := 150.0) -> void:
 	add_child(_hint)
 	GameState.wallet_changed.connect(refresh)
 	GameState.owned_changed.connect(refresh)
+	Progress.xp_changed.connect(func(_gained): refresh())
 
 
 ## Shows an item. `action` is the label of the button shown once it's owned
@@ -113,11 +115,15 @@ func refresh() -> void:
 	_action.visible = owned and _action_text != ""
 	_action.text = _action_text
 	var short := int(price.get("amount", 0)) - GameState.balance(currency)
-	_buy.disabled = short > 0
+	var locked := not owned and ShopCatalog.level_locked(key)
+	_buy.disabled = short > 0 or locked
 	_hint.visible = true
 	if owned:
 		_price_row.visible = false
 		_hint.text = "It's yours!" if not price.is_empty() else "Free for everyone!"
+	elif locked:
+		_hint.text = "Reach level %d to buy this. You're level %d. Play to earn XP!" % [
+				ShopCatalog.level_needed(key), Progress.level()]
 	elif short > 0:
 		_hint.text = _need_text(currency, short)
 	elif currency == ShopCatalog.STARDUST:
@@ -146,6 +152,11 @@ func _on_buy() -> void:
 
 
 func _show_confirm(on: bool) -> void:
+	if not GameState.owns(key) and ShopCatalog.level_locked(key):
+		_buy.text = "Level %d" % ShopCatalog.level_needed(key)
+		_buy.theme_type_variation = &"PrimaryButton"
+		_buy.icon = UiTheme.icon("locked")
+		return
 	if on:
 		_buy.text = "Spend %s Stardust?" % ShopCatalog.amount_text(ShopCatalog.price(key))
 		_buy.theme_type_variation = &"PurpleButton"
@@ -164,13 +175,16 @@ func _process(delta: float) -> void:
 
 
 ## The little corner label for a catalog card: the price of something not
-## owned yet, a check on something bought (with `show_owned`), or {} for free.
+## owned yet, a lock and level for something that needs a higher level, a
+## check on something bought (with `show_owned`), or {} for free.
 static func price_tag(item_key: String, show_owned := false) -> Dictionary:
 	var price := ShopCatalog.price(item_key)
 	if price.is_empty():
 		return {}
 	if GameState.owns(item_key):
 		return {"icon": "check_mark_button", "color": OWNED_TAG} if show_owned else {}
+	if ShopCatalog.level_locked(item_key):
+		return {"icon": "locked", "text": "Lv %d" % ShopCatalog.level_needed(item_key), "color": LOCKED_TAG}
 	var stardust: bool = price["currency"] == ShopCatalog.STARDUST
 	return {"icon": ShopCatalog.currency_icon(price["currency"]), "text": ShopCatalog.amount_text(price),
 		"color": STARDUST_TAG if stardust else ACORN_TAG}

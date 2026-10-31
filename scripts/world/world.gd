@@ -14,6 +14,10 @@ const ACORN_SPOTS := 48
 ## Starfall Glade sits this far off to the side of the town, out of sight.
 ## Being in the same scene keeps networking the same everywhere.
 const GLADE_ORIGIN := Vector3(600, 0, 0)
+## The Sky Garden floats above the glade's east side (glade coordinates); its
+## portal stands at the castle door, where the north path ends.
+const SKY_GARDEN := Vector3(40, 36, -2)
+const SKY_PORTAL := Vector3(0, 0, -36)
 const LAND_NAMES := {"town": "Hometown", "glade": "Starfall Glade"}
 
 var houses: Array[House] = []
@@ -40,6 +44,11 @@ var _sun: DirectionalLight3D
 var _glade: FantasyLand
 var _pickups: Array[AcornPickups] = []
 var _zone: InteractZone # the one the local player stands in
+## Portals to places that open at a level: area (see Levels.AREAS) -> Portal.
+var _area_portals := {}
+var _lock_level := 0 # The level the portal locks were last set for.
+var _sky: SkyGarden
+var _in_sky := false
 
 
 func _ready() -> void:
@@ -86,7 +95,8 @@ func _ready() -> void:
 	_build.layout_edited.connect(_submit_house)
 	_build.item_placed.connect(func(key):
 		GameState.add_recent(key)
-		_hud.refresh_recent())
+		_hud.refresh_recent()
+		Progress.award("decorate"))
 	_build.purchase_needed.connect(_hud.need_purchase)
 	_hud.entry_chosen.connect(func(id, style):
 		_build.select_item(id, style)
@@ -202,6 +212,7 @@ func _setup_local_player(player: Player) -> void:
 		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go there." % [player.display_name, plot + 1])
 	else:
 		_hud.toast("Welcome! The neighborhood is full, so you are visiting today.")
+	Progress.award("daily")
 
 
 func _on_player_removed(id: int) -> void:
@@ -316,6 +327,7 @@ func _wear(option: String, index: int) -> void:
 
 func _on_acorn(amount: int, golden: bool, _where: Vector3) -> void:
 	GameState.earn("acorns", amount)
+	Progress.award("golden_acorn" if golden else "acorn")
 	if golden:
 		_hud.toast("A golden acorn! +%d Acorns" % amount)
 
@@ -323,7 +335,7 @@ func _on_acorn(amount: int, golden: bool, _where: Vector3) -> void:
 func _on_chase_finished(caught: int, reward: int) -> void:
 	var new_best := GameState.record_best("chase_best", caught)
 	GameState.earn("acorns", reward)
-	_hud.show_game_result(caught, reward, new_best)
+	_hud.show_game_result(caught, reward, new_best, Progress.award("star", caught))
 
 
 ## The zone the local player is standing in, or null.
@@ -443,6 +455,7 @@ func _enter_land(land: String) -> void:
 	if land != "glade":
 		_glade.chase.stop()
 	_hud.toast("Welcome to %s!" % LAND_NAMES[land])
+	Progress.visit(land)
 
 
 func _go_home() -> void:
@@ -461,8 +474,10 @@ func _pet_action(feed: bool) -> void:
 	elif feed:
 		pet.feed()
 		local_player.pet_reaction.rpc(0, 0)
+		Progress.award("feed_pet")
 	else:
 		local_player.pet_reaction.rpc(1, pet.play())
+		Progress.award("play_pet")
 
 
 func _toggle_build() -> void:
@@ -487,6 +502,12 @@ func _process(delta: float) -> void:
 		var land := land_at(local_player.global_position)
 		if land != _land:
 			_enter_land(land)
+		var in_sky := land == "glade" and local_player.global_position.y > SKY_GARDEN.y - 6.0
+		if in_sky != _in_sky:
+			_in_sky = in_sky
+			if in_sky:
+				_hud.toast("Welcome to the Sky Garden!")
+				Progress.visit("sky")
 		var zone := _zone_here()
 		if zone != _zone:
 			_zone = zone
@@ -536,10 +557,46 @@ func _build_environment() -> void:
 	var glade_acorns := AcornPickups.new().setup(glade.acorn_spots(ACORN_SPOTS), 22)
 	glade_acorns.name = "Acorns"
 	glade.add_child(glade_acorns)
-	_pickups.assign([town_acorns, glade_acorns])
+	# The Sky Garden, high above the glade, opens at a level; golden acorns grow there often.
+	_sky = SkyGarden.new()
+	_sky.position = SKY_GARDEN
+	glade.add_child(_sky)
+	var sky_acorns := AcornPickups.new().setup(_sky.acorn_spots(16), 33)
+	sky_acorns.name = "Acorns"
+	sky_acorns.golden_chance = 0.4
+	_sky.add_child(sky_acorns)
+	_pickups.assign([town_acorns, glade_acorns, sky_acorns])
+	var to_sky := Portal.new().setup("Sky Garden", Color("ff9ad5"))
+	to_sky.position = SKY_PORTAL
+	glade.add_child(to_sky)
+	to_sky.entered.connect(_travel.bind(_sky.portal))
+	_sky.portal.entered.connect(_travel.bind(to_sky))
 	var to_glade := Portal.new().setup("Starfall Glade", Color("b77cff"))
 	to_glade.position = Scenery.GLADE_PORTAL
 	to_glade.rotation.y = PI / 2 # Faces the plaza.
 	town.add_child(to_glade)
 	to_glade.entered.connect(_travel.bind(glade.portal))
 	glade.portal.entered.connect(_travel.bind(to_glade))
+	_area_portals["glade"] = to_glade
+	_area_portals["sky"] = to_sky
+	for area in _area_portals:
+		_area_portals[area].knocked.connect(_on_locked_portal.bind(area))
+	_refresh_locks()
+	Progress.xp_changed.connect(func(_gained): _refresh_locks())
+
+
+## Locks each portal whose place needs a higher level than yours (locks are
+## for the local player only; everyone has their own level).
+func _refresh_locks() -> void:
+	if Progress.level() == _lock_level:
+		return
+	_lock_level = Progress.level()
+	for area in _area_portals:
+		_area_portals[area].set_locked(not Progress.can_enter(area), Levels.area_level(area))
+
+
+func _on_locked_portal(player: Player, area: String) -> void:
+	if player != local_player:
+		return
+	_hud.toast("%s opens at level %d! Pick up acorns and play to earn XP." % [Levels.AREAS[area]["name"],
+			Levels.area_level(area)])

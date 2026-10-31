@@ -3,8 +3,12 @@ extends Node3D
 ## A glowing stone ring that carries you to another land when you walk into
 ## it. Only the local player's own walk-ins count; the world then moves that
 ## player, and everyone else sees them move through normal position syncing.
+## A portal to a place that opens at a higher level is locked: a padlock
+## hangs in it, the sign says when it opens, and you bump into it instead.
 
 signal entered(player: Player)
+## Walked into while locked.
+signal knocked(player: Player)
 
 const RING_RADIUS := 1.9
 const SWIRL_SHADER := """
@@ -25,12 +29,19 @@ void fragment() {
 """
 
 var title := ""
+var locked := false
 var _cooldown := 0.0
+var _color := Color.WHITE
+var _swirl: ShaderMaterial
+var _sign: Label3D
+var _padlock: Sprite3D
+var _barrier: StaticBody3D
 
 
 ## `color` tints the swirl so each destination has its own look.
 func setup(portal_title: String, color: Color) -> Portal:
 	title = portal_title
+	_color = color
 	name = "Portal" + portal_title.to_pascal_case()
 	# The ring stands upright, facing along the node's local Z.
 	var ring := MeshInstance3D.new()
@@ -68,6 +79,7 @@ func setup(portal_title: String, color: Color) -> Portal:
 	swirl.shader = shader
 	swirl.set_shader_parameter("outer", color)
 	disc.material_override = swirl
+	_swirl = swirl
 	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(disc)
 	# A round stone step in front of and under the ring.
@@ -89,6 +101,7 @@ func setup(portal_title: String, color: Color) -> Portal:
 	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sign.position.y = RING_RADIUS * 2.0 + 1.3
 	add_child(sign)
+	_sign = sign
 
 	var area := Area3D.new()
 	var shape := CollisionShape3D.new()
@@ -103,6 +116,36 @@ func setup(portal_title: String, color: Color) -> Portal:
 	for side in [-1.0, 1.0]:
 		MeshUtil.collider(self, Vector3(0.5, RING_RADIUS * 2.4, 0.5), Vector3(side * (RING_RADIUS + 0.2), RING_RADIUS + 0.35, 0))
 	return self
+
+
+## Locks or opens the portal. `level` is the level it opens at, for the sign.
+func set_locked(on: bool, level := 1) -> void:
+	locked = on
+	_sign.text = "%s\nOpens at level %d" % [title, level] if on else title
+	_swirl.set_shader_parameter("outer", Color("8a8799") if on else _color)
+	_swirl.set_shader_parameter("inner", Color("d9d6e3") if on else Color(1.0, 0.95, 1.0))
+	if on and not _padlock:
+		_padlock = Sprite3D.new()
+		_padlock.texture = UiTheme.icon("locked")
+		_padlock.pixel_size = 0.015
+		_padlock.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		# Drawn after the see-through swirl, so it shows in front from either side.
+		_padlock.render_priority = 10
+		_padlock.shaded = false
+		_padlock.position.y = RING_RADIUS + 0.35
+		add_child(_padlock)
+		# A thin wall in the ring; thin enough that bumping it still counts as walking in.
+		_barrier = StaticBody3D.new()
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(RING_RADIUS * 2.0, RING_RADIUS * 2.0, 0.1)
+		shape.shape = box
+		_barrier.add_child(shape)
+		_barrier.position.y = RING_RADIUS + 0.35
+		add_child(_barrier)
+	if _padlock:
+		_padlock.visible = on
+		(_barrier.get_child(0) as CollisionShape3D).set_deferred("disabled", not on)
 
 
 ## Where to stand when arriving through this portal: far enough in front of
@@ -125,4 +168,7 @@ func _on_body_entered(body: Node3D) -> void:
 	if _cooldown > 0.0 or not body is Player or not body.is_multiplayer_authority():
 		return
 	_cooldown = 1.5
-	entered.emit(body)
+	if locked:
+		knocked.emit(body)
+	else:
+		entered.emit(body)

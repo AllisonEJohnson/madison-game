@@ -57,6 +57,10 @@ func _prices_and_buying() -> void:
 	GameState.profile["acorns"] = 0
 	GameState.profile["stardust"] = 0
 	GameState.profile["owned"] = []
+	# At the top level nothing is level-locked and no level-up pays extra
+	# (scripts/dev/levels_test.gd checks levels).
+	GameState.profile["xp"] = Levels.max_xp()
+	GameState.profile["rewarded_level"] = Levels.MAX_LEVEL
 	var sofa_2 := ShopCatalog.furniture_key("sofa", 1)
 	_check("the first sofa is free", ShopCatalog.is_free("furniture:sofa:0") and GameState.owns("furniture:sofa:0"))
 	_check("other sofas cost 80 Acorns", ShopCatalog.price(sofa_2) == {"currency": "acorns", "amount": 80})
