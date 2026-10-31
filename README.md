@@ -53,9 +53,10 @@ To play across a home network, the host shares their local IP address and allows
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
 - **Kid safety**: no free-text chat or typed names. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kid-safety).
 
-Furniture, pets and trees use licensed models from a private repo (see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs, using simple shapes.
-To get them, clone that repo into an `itHappy` folder here before opening the project:
+The trees, bushes, rocks and grass are the free [KayKit Forest Nature Pack](https://kaylousberg.itch.io/kaykit-forest)
+by Kay Lousberg (CC0), kept in `assets/kaykit_forest`. Furniture, pets and flowers use licensed models from
+a private repo (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs,
+using simple shapes. To get them, clone that repo into an `itHappy` folder here before opening the project:
 
 ```sh
 git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy

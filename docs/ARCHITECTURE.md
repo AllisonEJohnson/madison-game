@@ -43,7 +43,11 @@ build its shape. Builders also have a `sanitize()` that clamps any config to val
 
 ## Art
 
-The furniture, pets and trees come from three paid ithappy packs (Bright Furniture, Animals, Cute
+The trees, bushes, rocks and grass come from the free KayKit Forest Nature Pack (CC0), so those models
+are committed in `assets/kaykit_forest` with the pack's license. Only the files the town uses are kept.
+`Scenery` draws the grass as one `MultiMeshInstance3D` per tuft shape, so 1,500 tufts cost eight draw calls.
+
+The furniture, pets and flowers come from three paid ithappy packs (Bright Furniture, Animals, Cute
 Characters). Their license forbids sharing the raw files, and this repo is public, so they live in the
 private `AllisonEJohnson/madison-game-art` repo and are cloned into `itHappy/`, which git ignores:
 
