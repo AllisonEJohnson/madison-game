@@ -156,7 +156,8 @@ func _build_chips() -> void:
 	for e in _entries:
 		if e["category"] == _category and not (e["group"] in groups):
 			groups.append(e["group"])
-	_chip_scroll.visible = groups.size() > 1
+	# The chip row keeps its space when empty, so search stays on the right.
+	_chips.visible = groups.size() > 1
 	if groups.size() <= 1:
 		return
 	for g in [""] + groups:
@@ -203,7 +204,7 @@ func _refresh(keep_page: bool) -> void:
 				items.append(e)
 	if query == "":
 		_title.text = _names.get(_category, "")
-	_chip_scroll.visible = query == "" and _chips.get_child_count() > 0
+	_chips.visible = query == "" and _chips.get_child_count() > 0
 	_grid.select(_selected, false)
 	_grid.set_items(items, keep_page)
 
