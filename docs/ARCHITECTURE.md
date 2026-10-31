@@ -8,9 +8,10 @@ autoload/
                      user://profile.json; input map
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
   thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
-assets/ui/
-  fonts/             Fredoka (headings) and Nunito (text), variable fonts, SIL Open Font License
-  icons/             Fluent Emoji pictures as 128 px PNGs (MIT)
+assets/
+  kaykit_forest/     Trees, bushes, rocks and grass from the free KayKit Forest pack (CC0; see "Art")
+  ui/fonts/          Fredoka (headings) and Nunito (text), variable fonts, SIL Open Font License
+  ui/icons/          Fluent Emoji pictures as 128 px PNGs (MIT)
 scenes/
   main_menu.tscn     Character creator + play buttons (scripts/ui/main_menu.gd)
   world.tscn         The neighborhood (scripts/world/world.gd)
@@ -93,7 +94,11 @@ camera zooms.
 
 ## Art
 
-The furniture, pets and trees come from three paid ithappy packs (Bright Furniture, Animals, Cute
+The trees, bushes, rocks and grass come from the free KayKit Forest Nature Pack (CC0), so those models
+are committed in `assets/kaykit_forest` with the pack's license. Only the files the town uses are kept.
+`Scenery` draws the grass as one `MultiMeshInstance3D` per tuft shape, so 1,500 tufts cost eight draw calls.
+
+The furniture, pets and flowers come from three paid ithappy packs (Bright Furniture, Animals, Cute
 Characters). Their license forbids sharing the raw files, and this repo is public, so they live in the
 private `AllisonEJohnson/madison-game-art` repo and are cloned into `itHappy/`, which git ignores:
 

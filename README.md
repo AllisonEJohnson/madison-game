@@ -67,9 +67,10 @@ Fonts are [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Nunito](http
 (SIL Open Font License) and icons are [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (MIT); their
 licenses are next to them in `assets/ui/`.
 
-Furniture, pets and trees use licensed models from a private repo (see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs, using simple shapes.
-To get them, clone that repo into an `itHappy` folder here before opening the project:
+The trees, bushes, rocks and grass are the free [KayKit Forest Nature Pack](https://kaylousberg.itch.io/kaykit-forest)
+by Kay Lousberg (CC0), kept in `assets/kaykit_forest`. Furniture, pets and flowers use licensed models from
+a private repo (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs,
+using simple shapes. To get them, clone that repo into an `itHappy` folder here before opening the project:
 
 ```sh
 git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
