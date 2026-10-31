@@ -4,8 +4,8 @@
 
 ```
 autoload/
-  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents) saved to
-                     user://profile.json; input map
+  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents, wallet and
+                     membership) saved to user://profile.json; input map
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
   thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
 assets/
@@ -32,8 +32,11 @@ scripts/
   ui/catalog_browser.gd       Category rail + group chips + search + Favorites/Recent around an ItemGrid
   ui/swatch_row.gd            Color swatches plus a rainbow button for any color
   ui/main_menu.gd             Character creator, pet picker, name picker and play buttons
-  ui/hud.gd                   In-world UI: player and pet cards, dock, chat, dialogs, build drawer
-  world/scenery.gd            Ground, roads, plaza, trees, bushes, rocks, grass and flowers
+  ui/hud.gd                   In-world UI: player and pet cards (with wallet), dock, chat, dialogs, build drawer
+  ui/admin_console.gd         Maker-only command box (` key) that grants currency and membership
+  world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
+  world/fantasy_land.gd       Starfall Glade, the fantasy land
+  world/portal.gd             Walk-in portal between lands
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
   util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
@@ -102,12 +105,13 @@ where its face, head, torso, legs and feet are, and any model can do the same.
 
 ## Art
 
-The trees, bushes, rocks and grass come from the free KayKit Forest Nature Pack (CC0), so those models
-are committed in `assets/kaykit_forest` with the pack's license. Only the files the town uses are kept.
-`Scenery` draws the grass as one `MultiMeshInstance3D` per tuft shape, so 1,500 tufts cost eight draw calls.
+The grass comes from the free KayKit Forest Nature Pack (CC0), so those models are committed in
+`assets/kaykit_forest` with the pack's license; its trees, bushes and rocks stand in when the licensed
+art is missing. Only the files the game uses are kept. `Scenery` draws the grass as one
+`MultiMeshInstance3D` per tuft shape, so 1,500 tufts cost eight draw calls.
 
-The avatars, furniture, pets and flowers come from three paid ithappy packs (Cute Characters, Bright
-Furniture, Animals). Their license forbids sharing the raw files, and this repo is public, so they live in the
+The avatars, furniture, pets, flowers, the town's trees, bushes and stones, and all of Starfall Glade come
+from four paid ithappy packs (Cute Characters, Bright Furniture, Animals, Fantasy). Their license forbids sharing the raw files, and this repo is public, so they live in the
 private `AllisonEJohnson/madison-game-art` repo and are cloned into `itHappy/`, which git ignores:
 
 ```sh
@@ -117,7 +121,7 @@ git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
 The pack scenes refer to `res://itHappy/...`, so the folder name matters. Code asks `Art.instance()`
 for a model and falls back to its simple shape version when that returns null, so the game still runs
 without the art (for example in a fork). Every model the game uses is listed in an `art_paths()`
-function (avatar builder, furniture catalog, pet builder, scenery). The web build checks out the art
+function (avatar builder, furniture catalog, pet builder, scenery, fantasy land). The web build checks out the art
 with the `ART_REPO_TOKEN` Actions secret, and `scripts/dev/prune_art.gd` deletes everything those lists
 don't need before export, which keeps the download small. It also drops the character animations the
 game doesn't play. A wrong path in a list fails that step.
@@ -127,6 +131,29 @@ The pack paints every part from one palette texture, so colors work by recolorin
 records each part's main color (generate it with `scripts/dev/part_colors.gd`), and `tint.gdshader`
 swaps that color for the player's pick while leaving stripes and buttons alone. Skin works the same
 way on a single body model, so any skin color is possible.
+
+## Lands
+
+The town and Starfall Glade are two parts of the one world scene: the glade sits 600 m east of the town
+(`World.GLADE_ORIGIN`), out of sight. A portal in each land moves the local player to the other one's
+arrival spot, and everyone else sees the move through normal position syncing, so lands need no extra
+networking. The world watches which land the local player is in, switches the sky and sunlight to that
+land's look (`Lighting.LANDS`) and hides the other land so it costs nothing to draw. Its colliders stay,
+so remote players and pets there still stand on solid ground. More lands can be added the same way at
+other offsets.
+
+The Fantasy pack's own water shader reads the depth buffer, which browsers handle poorly, so the glade's
+pond uses a small shader of its own.
+
+## Wallet and membership
+
+`GameState` keeps two currencies, **Acorns** (earned by playing) and **Stardust** (premium, bought with
+real money once payments exist), plus `member_until`, the Unix time a membership runs out. `grant()`,
+`spend()`, `grant_membership()` and `is_member()` are the only ways in, and every change emits
+`wallet_changed`, which the HUD listens to. For now the wallet lives in the device's save, and only the
+admin console (debug builds or `--admin`) grants Stardust and membership. Before real purchases go live,
+wallets must move to the game server, which would grant Stardust only after a verified payment receipt;
+a saved file on a player's device can be edited, so it can't be trusted with anything bought.
 
 ## Networking
 

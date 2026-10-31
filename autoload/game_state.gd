@@ -1,10 +1,22 @@
 extends Node
-## Holds the local player's saved profile (name, avatar, pet, house) and
-## registers input actions so the project file stays small.
+## Holds the local player's saved profile (name, avatar, pet, house, wallet)
+## and registers input actions so the project file stays small.
+
+## Fires when either currency balance or the membership changes.
+signal wallet_changed
 
 const SAVE_PATH := "user://profile.json"
 const MAX_FAVORITES := 300
 const MAX_RECENT := 30
+## The two currencies: Acorns are earned by playing; Stardust is the premium
+## currency, bought with real money once payments exist (for now only the
+## admin console grants it). Both live in this device's save until a game
+## server holds them, which has to happen before real purchases go live.
+const CURRENCIES := {
+	"acorns": {"name": "Acorns", "icon": "chestnut"},
+	"stardust": {"name": "Stardust", "icon": "shooting_star"},
+}
+const MAX_BALANCE := 9_999_999
 
 var profile := {}
 
@@ -25,6 +37,10 @@ func default_profile() -> Dictionary:
 		# Build-mode keys ("sofa:3"). Only this device sees them.
 		"favorites": [],
 		"recent": [],
+		"acorns": 0,
+		"stardust": 0,
+		# Unix time the membership runs out; 0 means not a member.
+		"member_until": 0,
 	}
 
 
@@ -46,6 +62,10 @@ func load_profile() -> void:
 		profile["house"] = House.sanitize_layout(data["house"])
 	profile["favorites"] = _clean_keys(data.get("favorites"), MAX_FAVORITES)
 	profile["recent"] = _clean_keys(data.get("recent"), MAX_RECENT)
+	for currency in CURRENCIES:
+		profile[currency] = _clean_amount(data.get(currency))
+	var member_until = data.get("member_until")
+	profile["member_until"] = maxi(0, int(member_until)) if member_until is float else 0
 
 
 func save_profile() -> void:
@@ -70,6 +90,58 @@ func add_recent(key: String) -> void:
 	if recent.size() > MAX_RECENT:
 		recent.resize(MAX_RECENT)
 	save_profile()
+
+
+# --- Wallet and membership ---------------------------------------------------------
+
+func balance(currency: String) -> int:
+	return int(profile.get(currency, 0))
+
+
+## Adds (or, with a negative amount, takes away) currency, never going below 0.
+func grant(currency: String, amount: int) -> void:
+	if not CURRENCIES.has(currency):
+		return
+	profile[currency] = clampi(balance(currency) + amount, 0, MAX_BALANCE)
+	save_profile()
+	wallet_changed.emit()
+
+
+## Pays `amount` if the balance covers it. Returns false (and changes nothing)
+## when it doesn't.
+func spend(currency: String, amount: int) -> bool:
+	if not CURRENCIES.has(currency) or amount < 0 or balance(currency) < amount:
+		return false
+	profile[currency] = balance(currency) - amount
+	save_profile()
+	wallet_changed.emit()
+	return true
+
+
+func is_member() -> bool:
+	return int(profile.get("member_until", 0)) > int(Time.get_unix_time_from_system())
+
+
+## Days of membership left, rounded up; 0 when not a member.
+func member_days_left() -> int:
+	var left := int(profile.get("member_until", 0)) - int(Time.get_unix_time_from_system())
+	return ceili(left / 86400.0) if left > 0 else 0
+
+
+## Adds days to the membership (counting from now if it had run out). A
+## negative or zero number of days ends it.
+func grant_membership(days: int) -> void:
+	var now := int(Time.get_unix_time_from_system())
+	if days <= 0:
+		profile["member_until"] = 0
+	else:
+		profile["member_until"] = maxi(int(profile.get("member_until", 0)), now) + days * 86400
+	save_profile()
+	wallet_changed.emit()
+
+
+static func _clean_amount(data: Variant) -> int:
+	return clampi(int(data), 0, MAX_BALANCE) if data is float or data is int else 0
 
 
 static func _clean_keys(data: Variant, limit: int) -> Array:

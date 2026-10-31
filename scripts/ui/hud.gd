@@ -44,6 +44,8 @@ var _player_card: PanelContainer
 var _player_pic: TextureRect
 var _player_name: Label
 var _status: Label
+var _wallet_labels := {} # currency -> Label
+var _member_badge: Control
 var _pet_card: PanelContainer
 var _pet_pic: TextureRect
 var _pet_name: Label
@@ -116,6 +118,26 @@ func _build_player_card() -> void:
 	words.add_child(_player_name)
 	_status = UiTheme.label("", &"Hint", 14)
 	words.add_child(_status)
+	# Balances of both currencies, and a crown while the membership lasts.
+	var wallet := UiTheme.hbox(6)
+	words.add_child(wallet)
+	for currency in GameState.CURRENCIES:
+		var info: Dictionary = GameState.CURRENCIES[currency]
+		var icon := UiTheme.texture_rect(UiTheme.icon(info["icon"]), 24)
+		icon.tooltip_text = info["name"]
+		icon.mouse_filter = Control.MOUSE_FILTER_PASS
+		wallet.add_child(icon)
+		var amount := UiTheme.label("0", &"", 17)
+		amount.tooltip_text = info["name"]
+		amount.mouse_filter = Control.MOUSE_FILTER_PASS
+		amount.custom_minimum_size.x = 34
+		wallet.add_child(amount)
+		_wallet_labels[currency] = amount
+	_member_badge = UiTheme.texture_rect(UiTheme.icon("crown"), 24)
+	_member_badge.mouse_filter = Control.MOUSE_FILTER_PASS
+	_member_badge.visible = false
+	wallet.add_child(_member_badge)
+	set_wallet()
 
 
 func _build_pet_card() -> void:
@@ -525,6 +547,23 @@ func set_player(display_name: String, avatar: Dictionary) -> void:
 	_player_name.text = display_name
 	_player_pic.texture = Thumbs.texture("portrait:" + JSON.stringify(avatar),
 			func(): return AvatarBuilder.build(avatar), "portrait")
+
+
+## Shows the current balances and membership from GameState.
+func set_wallet() -> void:
+	for currency in _wallet_labels:
+		(_wallet_labels[currency] as Label).text = _short_number(GameState.balance(currency))
+	var days := GameState.member_days_left()
+	_member_badge.visible = days > 0
+	_member_badge.tooltip_text = "Member: %d day%s left" % [days, "" if days == 1 else "s"]
+
+
+static func _short_number(n: int) -> String:
+	if n >= 1_000_000:
+		return "%.1fM" % (n / 1_000_000.0)
+	if n >= 10_000:
+		return "%dk" % (n / 1000)
+	return str(n)
 
 
 func toast(text: String) -> void:
