@@ -12,7 +12,12 @@ extends HBoxContainer
 signal chosen(key: String)
 signal favorite_toggled(key: String, on: bool)
 
+const GAP := 8.0
+
 var card_size := Vector2(104, 104)
+## Optional card sizes, biggest first. The grid uses the one that needs the
+## fewest pages for its items, and the bigger one on a tie.
+var card_sizes: Array = []
 var show_names := false
 ## key -> true. Set to a Dictionary to show a star on every card.
 var favorites = null
@@ -26,7 +31,7 @@ var _columns := 1
 var _selected := ""
 var _area: Control
 var _grid: GridContainer
-var _dots: Label
+var _dots: PageDots
 var _prev: Button
 var _next: Button
 var _empty: VBoxContainer
@@ -49,8 +54,8 @@ func _init() -> void:
 	_area.gui_input.connect(_on_area_input)
 	middle.add_child(_area)
 	_grid = GridContainer.new()
-	_grid.add_theme_constant_override("h_separation", 8)
-	_grid.add_theme_constant_override("v_separation", 8)
+	_grid.add_theme_constant_override("h_separation", int(GAP))
+	_grid.add_theme_constant_override("v_separation", int(GAP))
 	_grid.mouse_filter = Control.MOUSE_FILTER_PASS
 	_area.add_child(_grid)
 	_empty = UiTheme.vbox(6)
@@ -58,8 +63,7 @@ func _init() -> void:
 	_empty.alignment = BoxContainer.ALIGNMENT_CENTER
 	_empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_area.add_child(_empty)
-	_dots = UiTheme.label("", &"Hint", 14)
-	_dots.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dots = PageDots.new()
 	middle.add_child(_dots)
 	_next = _arrow("right_arrow", 1)
 	add_child(_next)
@@ -69,6 +73,7 @@ func set_items(items: Array, keep_page := false) -> void:
 	_items = items
 	if not keep_page:
 		_page = 0
+	_fit_cards()
 	_show_selected_page()
 	_fill()
 
@@ -120,13 +125,29 @@ func _on_area_input(event: InputEvent) -> void:
 ## Works out how many cards fit, keeping the first card of the page in view.
 func _relayout() -> void:
 	var first := _page * _per_page
-	var gap := 8.0
-	_columns = maxi(1, floori((_area.size.x + gap) / (card_size.x + gap)))
-	var rows := maxi(1, floori((_area.size.y + gap) / (card_size.y + gap)))
-	_per_page = _columns * rows
-	_grid.columns = _columns
+	_fit_cards()
 	_page = first / _per_page
 	_fill()
+
+
+func _fit_cards() -> void:
+	var fewest := 0
+	for option in card_sizes:
+		var room := _fit(option)
+		var pages := ceili(float(maxi(_items.size(), 1)) / (room.x * room.y))
+		if fewest == 0 or pages < fewest:
+			fewest = pages
+			card_size = option
+	var fit := _fit(card_size)
+	_columns = fit.x
+	_per_page = fit.x * fit.y
+	_grid.columns = _columns
+
+
+## Columns and rows of cards of this size that fit in the area.
+func _fit(card: Vector2) -> Vector2i:
+	return Vector2i(maxi(1, floori((_area.size.x + GAP) / (card.x + GAP))),
+			maxi(1, floori((_area.size.y + GAP) / (card.y + GAP))))
 
 
 func _fill() -> void:
@@ -145,10 +166,9 @@ func _fill() -> void:
 		if i < count:
 			_show_item(card, _items[start + i])
 	# Center the grid in the area.
-	var gap := 8.0
 	var used_cols := mini(_columns, maxi(count, 1))
 	var rows := ceili(float(maxi(count, 1)) / _columns)
-	var grid_size := Vector2(used_cols * (card_size.x + gap) - gap, rows * (card_size.y + gap) - gap)
+	var grid_size := Vector2(used_cols * (card_size.x + GAP) - GAP, rows * (card_size.y + GAP) - GAP)
 	_grid.size = grid_size
 	_grid.position = Vector2(floorf((_area.size.x - grid_size.x) / 2.0), 0.0)
 	var pages := page_count()
@@ -156,15 +176,7 @@ func _fill() -> void:
 	_next.disabled = _page >= pages - 1
 	_prev.modulate.a = 0.35 if _prev.disabled else 1.0
 	_next.modulate.a = 0.35 if _next.disabled else 1.0
-	if pages <= 1:
-		_dots.text = " "
-	elif pages <= 12:
-		var dots := []
-		for p in pages:
-			dots.append("●" if p == _page else "○")
-		_dots.text = " ".join(dots)
-	else:
-		_dots.text = "Page %d of %d" % [_page + 1, pages]
+	_dots.show_page(_page, pages)
 	_show_empty(_items.is_empty())
 
 
@@ -288,3 +300,39 @@ func _show_star(card: Button) -> void:
 	star.visible = favorites is Dictionary and (fav or key == _selected or hovered)
 	star.modulate = Color.WHITE if fav else Color(0.55, 0.5, 0.6, 0.55)
 	star.tooltip_text = "Remove from favorites" if fav else "Add to favorites"
+
+
+## Page dots. They are drawn because the UI fonts have no dot characters and
+## the browser build has no fallback font. Past 12 pages it says "Page 3 of 19".
+class PageDots extends Control:
+	const MAX_DOTS := 12
+	var _page := 0
+	var _pages := 1
+	var _words: Label
+
+	func _init() -> void:
+		custom_minimum_size.y = 20
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_words = UiTheme.label("", &"Hint", 14)
+		_words.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		add_child(_words)
+
+	func show_page(page: int, pages: int) -> void:
+		_page = page
+		_pages = pages
+		_words.text = "Page %d of %d" % [page + 1, pages] if pages > MAX_DOTS else ""
+		queue_redraw()
+
+	func _draw() -> void:
+		if _pages <= 1 or _pages > MAX_DOTS:
+			return
+		var step := 14.0
+		var x := (size.x - (_pages - 1) * step) / 2.0
+		for p in _pages:
+			var center := Vector2(x + p * step, size.y / 2.0)
+			if p == _page:
+				draw_circle(center, 4.5, UiTheme.INK_SOFT, true, -1.0, true)
+			else:
+				draw_circle(center, 3.5, UiTheme.INK_SOFT, false, 1.5, true)
