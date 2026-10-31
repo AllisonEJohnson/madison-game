@@ -1,3 +1,5 @@
 .godot/
 *.import
-export_presets.cfg
+# Export output. build/.gdignore stays so Godot never imports exported files.
+build/*
+!build/.gdignore

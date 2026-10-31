@@ -6,6 +6,15 @@ Style your character, build and decorate your own home, and bring your pet every
 ![Character creator](docs/menu.png)
 ![Home and build mode](docs/home.png)
 
+## Play in your browser
+
+**https://allisonejohnson.github.io/madison-game/**
+
+The browser version is rebuilt and published automatically every time `main` changes
+(see [.github/workflows/web.yml](.github/workflows/web.yml)). It needs a keyboard and mouse, and it plays solo:
+browsers can't use the network connection that online play needs, so playing with friends needs the
+downloaded game below. Your character, pet and home are saved in the browser.
+
 ## Run it
 
 1. Install [Godot 4.3 or newer](https://godotengine.org/download) (standard build, not .NET).
@@ -45,6 +54,14 @@ To play across a home network, the host shares their local IP address and allows
 All art is built from simple shapes in code, so there are no asset files to manage yet.
 
 ## Developer helpers
+
+To build the browser version yourself, install the 4.3 export templates (Editor > Manage Export Templates),
+then use **Project > Export > Web**, or from a terminal:
+
+```sh
+godot --headless --export-release "Web" build/web/index.html
+python3 -m http.server -d build/web 8000   # then open http://localhost:8000
+```
 
 ```sh
 # Two-process multiplayer smoke test (prints what each peer sees)

@@ -5,7 +5,7 @@
 ```
 autoload/
   game_state.gd      Local profile (name, avatar, pet, house) saved to user://profile.json; input map
-  net.gd             ENet host/join, connection status, return-to-menu
+  net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
 scenes/
   main_menu.tscn     Character creator + play buttons (scripts/ui/main_menu.gd)
   world.tscn         The neighborhood (scripts/world/world.gd)
@@ -52,6 +52,14 @@ Listen-server model with Godot's high-level multiplayer API:
    broadcasts the layout. Late joiners receive the latest layouts on arrival.
 
 The host is the only authority for anything shared, and it re-validates every message.
+
+### Browser build
+
+The web export (single-threaded, so GitHub Pages needs no special headers) can't use ENet, because
+browsers can't open UDP sockets. `Net.online_available` is false there: the menu hides host/join, and
+`Net.start()` runs the world on an `OfflineMultiplayerPeer`, which acts as a server with no peers, so the
+same spawn and RPC code runs solo. Online play in the browser would need `WebSocketMultiplayerPeer` or
+`WebRTCMultiplayerPeer` plus a hosted server, which fits the dedicated-server roadmap item below.
 
 ## Kid safety
 
