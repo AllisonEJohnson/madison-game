@@ -20,6 +20,7 @@ scripts/
   ui/hud.gd                   In-world UI
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
+  util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
   dev/                        Smoke test and screenshot helpers (only run with flags)
 ```
 

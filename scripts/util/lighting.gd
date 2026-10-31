@@ -1,0 +1,73 @@
+class_name Lighting
+extends RefCounted
+## The game's shared look: sky, sunlight and color grading. The world and the
+## character preview both use it, so an avatar looks the same in each.
+## Effects a renderer lacks (ambient occlusion in browsers) are skipped by Godot.
+
+const SKY_TOP := Color("2a7fe6")
+const SKY_HORIZON := Color("c2e3fa")
+const GROUND_BOTTOM := Color("5a7d4a")
+const SUN_COLOR := Color("fff0d6")
+const SUN_ENERGY := 1.3
+const AMBIENT_ENERGY := 0.7
+# The Compatibility renderer (used in browsers) comes out much brighter for the
+# same values, so it gets dimmer lights to match the desktop look.
+const COMPAT_SUN_ENERGY := 0.95
+const COMPAT_AMBIENT_ENERGY := 0.35
+
+
+static func is_compatibility() -> bool:
+	return RenderingServer.get_current_rendering_method() == "gl_compatibility"
+
+
+static func environment(outdoor := true) -> Environment:
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = SKY_TOP
+	sky_mat.sky_horizon_color = SKY_HORIZON
+	sky_mat.sky_curve = 0.1
+	sky_mat.ground_bottom_color = GROUND_BOTTOM
+	sky_mat.ground_horizon_color = SKY_HORIZON
+	sky_mat.sun_angle_max = 25.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+
+	var e := Environment.new()
+	e.sky = sky
+	e.background_mode = Environment.BG_SKY
+	# Shade is lit by the sky, so shadows turn a soft blue instead of gray.
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	e.ambient_light_energy = COMPAT_AMBIENT_ENERGY if is_compatibility() else AMBIENT_ENERGY
+	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	# AgX keeps bright areas from blowing out to white; the saturation boost
+	# below brings back the colors it mutes.
+	e.tonemap_mode = Environment.TONE_MAPPER_AGX
+	e.ssao_enabled = true
+	e.ssao_radius = 1.0
+	e.ssao_intensity = 1.5
+	e.adjustment_enabled = true
+	e.adjustment_saturation = 1.35
+	e.adjustment_contrast = 1.08
+	if outdoor:
+		e.glow_enabled = true
+		e.glow_intensity = 0.25
+		e.glow_bloom = 0.05
+		# Distant trees fade into the horizon instead of ending at a hard edge.
+		e.fog_enabled = true
+		e.fog_mode = Environment.FOG_MODE_DEPTH
+		e.fog_light_color = SKY_HORIZON
+		e.fog_depth_begin = 35.0
+		e.fog_depth_end = 160.0
+		e.fog_depth_curve = 1.5
+		e.fog_sky_affect = 0.0
+	return e
+
+
+static func sun() -> DirectionalLight3D:
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-50, -35, 0)
+	light.light_color = SUN_COLOR
+	light.light_energy = COMPAT_SUN_ENERGY if is_compatibility() else SUN_ENERGY
+	light.shadow_enabled = true
+	light.shadow_blur = 1.5
+	light.directional_shadow_max_distance = 70.0
+	return light

@@ -6,7 +6,7 @@ config_version=5
 config/name="Hometown Pals"
 config/description="An original online 3D neighborhood: style your character, build a home, raise a pet."
 run/main_scene="res://scenes/main_menu.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
