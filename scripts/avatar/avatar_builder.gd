@@ -7,6 +7,8 @@ extends RefCounted
 const SKIN_TONES := ["ffe0cc", "f6cba9", "e0ac80", "c68a5e", "a0683f", "7a4a2a", "553220"]
 const HAIR_COLORS := ["1f1a17", "4a2f20", "8a5a33", "d9b26a", "f2e3b3", "c2452d", "e26fb0", "5a8de0", "7fd18a", "ffffff"]
 const EYE_COLORS := ["3b2a20", "4f7fd6", "3e9a5b", "8a6a3a", "7a4fc2", "2a2a2a"]
+const CLOTH_COLORS := ["e04848", "f2994a", "f2c94c", "6fcf97", "2fa37a", "56ccf2", "3f7fd9",
+		"9b51e0", "eb5f9a", "ffffff", "8a8a8a", "2f3550", "1f1f1f", "8d5b3a"]
 
 const OPTIONS := {
 	"build": ["Slim", "Regular", "Broad"],
@@ -26,6 +28,61 @@ const OPTIONS := {
 
 const HEAD_Y := 1.58
 const HEAD_R := 0.2
+
+
+## The character creator's layout: tabs of rows. A row with "colors" picks a
+## color, "height" is a slider, and any other key picks from options(key).
+## The creator shows a color row together with the option row above it.
+## Optional fields: "icon" (a file in assets/ui/icons) on tabs and rows, and
+## "view" (face, head, body, torso, legs, feet or back), which frames the
+## pictures of each option.
+static func tabs() -> Array:
+	return [
+		{"title": "Face", "icon": "smiling_face_with_smiling_eyes", "view": "face", "rows": [
+			{"label": "Eyes", "key": "eyes", "icon": "eye"},
+			{"label": "Eye color", "key": "eye_color", "colors": EYE_COLORS},
+			{"label": "Eyebrows", "key": "brows", "icon": "face_with_raised_eyebrow"},
+			{"label": "Nose", "key": "nose", "icon": "nose"},
+			{"label": "Mouth", "key": "mouth", "icon": "mouth"},
+			{"label": "Cheeks", "key": "cheeks", "icon": "smiling_face"},
+			{"label": "Glasses", "key": "glasses", "icon": "glasses"},
+			{"label": "Glasses color", "key": "glasses_color", "colors": CLOTH_COLORS},
+		]},
+		{"title": "Hair", "icon": "person_getting_haircut", "view": "head", "rows": [
+			{"label": "Hair style", "key": "hair", "icon": "person_getting_haircut"},
+			{"label": "Hair color", "key": "hair_color", "colors": HAIR_COLORS},
+		]},
+		{"title": "Body", "icon": "person_standing", "view": "body", "rows": [
+			{"label": "Skin tone", "key": "skin", "colors": SKIN_TONES, "icon": "waving_hand"},
+			{"label": "Height", "key": "height", "icon": "straight_ruler"},
+			{"label": "Body", "key": "build", "icon": "flexed_biceps"},
+		]},
+		{"title": "Clothes", "icon": "t-shirt", "view": "body", "rows": [
+			{"label": "Top", "key": "top", "icon": "t-shirt", "view": "torso"},
+			{"label": "Top color", "key": "top_color", "colors": CLOTH_COLORS},
+			{"label": "Top detail color", "key": "top_accent", "colors": CLOTH_COLORS},
+			{"label": "Bottoms", "key": "bottom", "icon": "jeans", "view": "legs"},
+			{"label": "Bottoms color", "key": "bottom_color", "colors": CLOTH_COLORS},
+			{"label": "Shoes", "key": "shoes", "icon": "running_shoe", "view": "feet"},
+			{"label": "Shoe color", "key": "shoe_color", "colors": CLOTH_COLORS},
+		]},
+		{"title": "Extras", "icon": "crown", "view": "body", "rows": [
+			{"label": "Hats & clips", "key": "hat", "icon": "top_hat", "view": "head"},
+			{"label": "Hat color", "key": "hat_color", "colors": CLOTH_COLORS},
+			{"label": "On your back", "key": "back", "icon": "backpack", "view": "back"},
+			{"label": "Back item color", "key": "back_color", "colors": CLOTH_COLORS},
+		]},
+	]
+
+
+## The choices for one option key, in index order.
+static func options(key: String) -> Array:
+	return OPTIONS.get(key, [])
+
+
+## How high the middle of the face is, for the creator's close-up camera.
+static func face_height(config: Dictionary) -> float:
+	return HEAD_Y * float(config.get("height", 1.0))
 
 
 static func default_config() -> Dictionary:

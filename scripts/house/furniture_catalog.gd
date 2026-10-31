@@ -7,6 +7,19 @@ extends RefCounted
 const FURNITURE := "Bright_Furniture/prefabs/assets/"
 const PET_STUFF := "Animals/prefabs/assets/assets/domestic_assets/"
 
+## Build-mode tabs, in order. Every furniture item names one as its "category".
+## Walls and floors have none: they make up the ready-built house, which
+## players decorate but don't rebuild.
+const CATEGORIES := [
+	{"id": "living", "name": "Living Room", "icon": "couch_and_lamp"},
+	{"id": "bedroom", "name": "Bedroom", "icon": "bed"},
+	{"id": "kitchen", "name": "Kitchen", "icon": "cooking"},
+	{"id": "bathroom", "name": "Bathroom", "icon": "bathtub"},
+	{"id": "fun", "name": "Fun & Games", "icon": "video_game"},
+	{"id": "decor", "name": "Plants & Lights", "icon": "potted_plant"},
+	{"id": "pets", "name": "Pet Stuff", "icon": "paw_prints"},
+]
+
 ## "size" is the footprint in cells (default 1x1): it grows toward +X and +Z
 ## from the clicked cell before rotation. "back" items stand against the
 ## cell's north wall. "styles" are licensed models (in "art_dir", default
@@ -20,65 +33,70 @@ const ITEMS := {
 	"window": {"name": "Window", "layer": "wall", "color": "f1e7d6"},
 	"door": {"name": "Doorway", "layer": "wall", "color": "f1e7d6"},
 	"fence": {"name": "Fence", "layer": "wall", "color": "9a6b42"},
-	"table": {"name": "Table", "layer": "object", "color": "a8744a", "solid": true,
+	"table": {"name": "Table", "category": "kitchen", "layer": "object", "color": "a8744a", "solid": true,
 		"styles": ["kitchen_table/kitchen_table_007", "kitchen_table/kitchen_table_009",
 			"kitchen_table/kitchen_table_005", "kitchen_table/kitchen_table_006",
 			"kitchen_table/kitchen_table_012", "kitchen_table/kitchen_table_014"]},
-	"chair": {"name": "Chair", "layer": "object", "color": "a8744a",
+	"chair": {"name": "Chair", "category": "kitchen", "layer": "object", "color": "a8744a",
 		"styles": ["kitchen_chair/kitchen_chair_008", "kitchen_chair/kitchen_chair_010",
 			"kitchen_chair/kitchen_chair_020", "kitchen_chair/kitchen_chair_007",
 			"kitchen_chair/kitchen_chair_025", "kitchen_chair/kitchen_chair_012",
 			"kitchen_chair/kitchen_chair_018", "kitchen_chair/kitchen_chair_006"]},
-	"armchair": {"name": "Armchair", "layer": "object", "color": "7fb3d5", "box": Vector3(0.8, 0.8, 0.8),
+	"armchair": {"name": "Armchair", "category": "living", "layer": "object", "color": "7fb3d5",
+		"box": Vector3(0.8, 0.8, 0.8),
 		"styles": ["armchair/armchair_008", "armchair/armchair_002", "armchair/armchair_015",
 			"armchair/armchair_003", "armchair/armchair_013", "armchair/armchair_016",
 			"armchair/armchair_001", "armchair/armchair_010"]},
-	"sofa": {"name": "Sofa", "layer": "object", "color": "e07a5f", "size": Vector2i(2, 1), "back": true, "solid": true,
+	"sofa": {"name": "Sofa", "category": "living", "layer": "object", "color": "e07a5f", "size": Vector2i(2, 1),
+		"back": true, "solid": true,
 		"styles": ["sofa/sofa_005", "sofa/sofa", "sofa/sofa_003", "sofa/sofa_004", "sofa/sofa_006",
 			"sofa/sofa_011", "sofa/sofa_024"]},
-	"bed": {"name": "Bed", "layer": "object", "color": "6fa8dc", "size": Vector2i(1, 2), "back": true, "solid": true,
+	"bed": {"name": "Bed", "category": "bedroom", "layer": "object", "color": "6fa8dc", "size": Vector2i(1, 2),
+		"back": true, "solid": true,
 		"styles": ["bed/bed_003", "bed/bed_004", "bed/bed_002", "bed/bed_010", "bed/bed_011",
 			"bed/bed_006", "bed/bed_005"]},
-	"wardrobe": {"name": "Wardrobe", "layer": "object", "color": "f2c94c", "back": true, "solid": true,
-		"box": Vector3(0.8, 1.9, 0.45),
+	"wardrobe": {"name": "Wardrobe", "category": "bedroom", "layer": "object", "color": "f2c94c", "back": true,
+		"solid": true, "box": Vector3(0.8, 1.9, 0.45),
 		"styles": ["closet/closet_013", "closet/closet_014", "closet/closet_015",
 			"closet/closet_022", "closet/closet_026", "closet/closet_012"]},
-	"bookshelf": {"name": "Bookshelf", "layer": "object", "color": "8d5b3a", "back": true, "solid": true,
+	"bookshelf": {"name": "Bookshelf", "category": "living", "layer": "object", "color": "8d5b3a", "back": true,
+		"solid": true,
 		"styles": ["shelf/shelf_049", "shelf/shelf_045", "shelf/shelf_022", "shelf/shelf_026",
 			"shelf/shelf_027", "shelf/shelf_040"]},
-	"lamp": {"name": "Lamp", "layer": "object", "color": "f6d365",
+	"lamp": {"name": "Lamp", "category": "decor", "layer": "object", "color": "f6d365",
 		"styles": ["lamp/lamp_003", "lamp/lamp_009", "lamp/lamp_013", "lamp/lamp_015", "lamp/lamp_022"]},
-	"plant": {"name": "Plant", "layer": "object", "color": "4caf50",
+	"plant": {"name": "Plant", "category": "decor", "layer": "object", "color": "4caf50",
 		"styles": ["flower/flower_002", "flower/flower_005", "flower/flower_009",
 			"flower/flower_017", "flower/flower_020", "flower/flower_011", "flower/flower_023"]},
-	"rug": {"name": "Rug", "layer": "object", "color": "b56fd1"},
-	"fridge": {"name": "Fridge", "layer": "object", "color": "e8eef2", "back": true, "solid": true,
-		"box": Vector3(0.7, 1.8, 0.65),
+	"rug": {"name": "Rug", "category": "living", "layer": "object", "color": "b56fd1"},
+	"fridge": {"name": "Fridge", "category": "kitchen", "layer": "object", "color": "e8eef2", "back": true,
+		"solid": true, "box": Vector3(0.7, 1.8, 0.65),
 		"styles": ["kitchen_item/kitchen_item_018", "kitchen_item/kitchen_item_019",
 			"kitchen_item/kitchen_item_020", "kitchen_item/kitchen_item_023"]},
-	"stove": {"name": "Stove", "layer": "object", "color": "e8eef2", "back": true, "solid": true,
+	"stove": {"name": "Stove", "category": "kitchen", "layer": "object", "color": "e8eef2", "back": true, "solid": true,
 		"box": Vector3(0.7, 0.85, 0.65),
 		"styles": ["kitchen_item/kitchen_item_031", "kitchen_item/kitchen_item_030",
 			"kitchen_item/kitchen_item_032"]},
-	"bathtub": {"name": "Bathtub", "layer": "object", "color": "f4f8fb", "size": Vector2i(2, 1), "back": true,
-		"solid": true, "box": Vector3(1.8, 0.6, 0.8),
+	"bathtub": {"name": "Bathtub", "category": "bathroom", "layer": "object", "color": "f4f8fb", "size": Vector2i(2, 1),
+		"back": true, "solid": true, "box": Vector3(1.8, 0.6, 0.8),
 		"styles": ["bathroom_item/bathroom_item_003", "bathroom_item/bathroom_item_020",
 			"bathroom_item/bathroom_item_025"]},
-	"toilet": {"name": "Toilet", "layer": "object", "color": "f4f8fb", "back": true, "box": Vector3(0.4, 0.7, 0.6),
+	"toilet": {"name": "Toilet", "category": "bathroom", "layer": "object", "color": "f4f8fb", "back": true,
+		"box": Vector3(0.4, 0.7, 0.6),
 		"styles": ["bathroom_item/bathroom_item_018", "bathroom_item/bathroom_item_008"]},
-	"piano": {"name": "Piano", "layer": "object", "color": "3a3a4a", "back": true, "solid": true,
+	"piano": {"name": "Piano", "category": "fun", "layer": "object", "color": "3a3a4a", "back": true, "solid": true,
 		"box": Vector3(0.9, 1.0, 0.4),
 		"styles": ["musical_instrument/musical_instrument_017",
 			"musical_instrument/musical_instrument_002"]},
-	"arcade": {"name": "Arcade", "layer": "object", "color": "5b6cf0", "back": true, "solid": true,
+	"arcade": {"name": "Arcade", "category": "fun", "layer": "object", "color": "5b6cf0", "back": true, "solid": true,
 		"box": Vector3(0.7, 1.8, 0.7),
 		"styles": ["entertainment/entertainment_004", "entertainment/entertainment_005",
 			"entertainment/entertainment_006", "entertainment/entertainment_017",
 			"entertainment/entertainment_018"]},
-	"toy_box": {"name": "Toys", "layer": "object", "color": "4fb3e8",
+	"toy_box": {"name": "Toys", "category": "fun", "layer": "object", "color": "4fb3e8",
 		"styles": ["toy/toy_031", "toy/toy_016", "toy/toy_035", "toy/toy_033", "toy/toy",
 			"toy/toy_002", "toy/toy_009", "toy/toy_024", "toy/toy_020", "toy/toy_037"]},
-	"pet_bed": {"name": "Pet Bed", "layer": "object", "color": "f28fad",
+	"pet_bed": {"name": "Pet Bed", "category": "pets", "layer": "object", "color": "f28fad",
 		"art_dir": PET_STUFF, "styles": ["pet_bed_01", "pet_bed_02", "pet_shelter_02", "pet_shelter_01"]},
 }
 
@@ -91,6 +109,31 @@ const OVERHANG := 0.1
 
 static func ids() -> Array:
 	return ITEMS.keys()
+
+
+## Every look a player can pick in build mode, one per style (or one for an
+## item without styles), keyed "id:style". Shapes have no styles to show
+## when the art isn't installed. Walls and floors aren't offered.
+static func entries() -> Array:
+	var out := []
+	for id in ITEMS:
+		var item: Dictionary = ITEMS[id]
+		if not item.has("category"):
+			continue
+		var looks := style_count(id) if has_art(id) else 1
+		for s in looks:
+			out.append({"key": "%s:%d" % [id, s], "id": id, "style": s, "name": item["name"],
+				"category": item["category"], "group": item["name"],
+				"tags": id.replace("_", " ")})
+	return out
+
+
+## Splits an entry key back into [id, style], or [] when it isn't a real item.
+static func parse_key(key: String) -> Array:
+	var parts := key.split(":")
+	if parts.size() != 2 or not ITEMS.has(parts[0]) or not parts[1].is_valid_int():
+		return []
+	return [parts[0], clampi(int(parts[1]), 0, maxi(style_count(parts[0]) - 1, 0))]
 
 
 static func layer(id: String) -> String:

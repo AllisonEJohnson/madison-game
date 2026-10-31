@@ -1,48 +1,84 @@
 extends Control
-## Title screen and character creator. Everything is built in code.
-## Left: name and play buttons. Middle: live 3D preview. Right: style tabs.
+## Title screen and character creator, built in code. Your character stands
+## in a 3D scene that fills the screen; your name and the play buttons float
+## on the left, and the style card on the right. The style card's tabs come
+## from AvatarBuilder.tabs(), so new options show up without menu changes.
 
-const CLOTH_COLORS := ["e04848", "f2994a", "f2c94c", "6fcf97", "2fa37a", "56ccf2", "3f7fd9",
-		"9b51e0", "eb5f9a", "ffffff", "8a8a8a", "2f3550", "1f1f1f", "8d5b3a"]
+const PET_COLORS := ["e8a35a", "c49a6c", "8d5b3a", "fff3e0", "ffffff", "8a8a8a", "1f1f1f", "f2c94c",
+		"e04848", "eb5f9a", "9b51e0", "3f7fd9", "56ccf2", "6fcf97", "2fa37a", "f2994a"]
+## How far the camera sits from what it looks at, per view.
+const CAMERA_DISTANCE := {"face": 2.6, "head": 3.2, "body": 4.8, "pet": 3.4}
+## Picture card sizes for choices, biggest first; long lists get smaller cards
+## so there are fewer pages to flip through.
+const CARD_SIZES := [Vector2(122, 140), Vector2(96, 124), Vector2(96, 104)]
 
 var _profile: Dictionary
 var _preview_root: Node3D
-var _preview_camera: Camera3D
-var _camera_target := Vector3(0, 1.0, 0)
-var _camera_goal := Vector3(0.6, 1.15, 3.6)
-var _preview_spin := 0.0
+var _camera: Camera3D
+var _camera_target := Vector3(0, 0.95, 0)
+var _camera_distance := 4.6
+var _view := "body"
+var _spin := 0.0
 var _dragging := false
+var _left: Control
+var _card: PanelContainer
 var _name_label: Label
-var _message: Label
+var _message: PanelContainer
 var _port: SpinBox
 var _address: LineEdit
-var _controls := {} # key -> control, to refresh after Randomize
-var _pet_looks: VBoxContainer # coat or color rows, rebuilt when the species changes
+var _friends: PanelContainer
+var _name_picker: PanelContainer
+var _scrim: ColorRect
+var _tabs: Array = [] # [{title, icon, view, parts: [{label, icon, key, kind, view, colors: [rows]}]}]
+var _tab_buttons: Array[Button] = []
+var _part_row: HFlowContainer
+var _content: VBoxContainer
+var _tab := 0
+var _part := 0
+var _option_grid: ItemGrid
 
 
 func _ready() -> void:
 	_profile = GameState.profile
-	var bg := ColorRect.new()
-	bg.color = Color("23304a")
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	theme = UiTheme.theme()
+	_build_stage()
+
+	# Dragging anywhere outside the cards spins your character.
+	var drag := Control.new()
+	drag.set_anchors_preset(Control.PRESET_FULL_RECT)
+	drag.gui_input.connect(_on_drag_input)
+	add_child(drag)
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 16)
+		margin.add_theme_constant_override("margin_" + side, 20)
 	add_child(margin)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(row)
+	_left = _build_left()
+	row.add_child(_left)
+	row.add_child(_build_spin_hint())
+	_card = _build_style_card()
+	row.add_child(_card)
 
-	row.add_child(_build_left_panel())
-	row.add_child(_build_preview())
-	row.add_child(_build_tabs())
+	_scrim = ColorRect.new()
+	_scrim.color = Color(0.1, 0.07, 0.2, 0.4)
+	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scrim.visible = false
+	_scrim.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			_close_name_picker())
+	add_child(_scrim)
+	_name_picker = _build_name_picker()
+	add_child(_name_picker)
+
 	_rebuild_preview()
-
-	_message.text = Net.menu_message
+	_show_tab(0)
+	_show_message(Net.menu_message)
 	Net.menu_message = ""
 	_handle_command_line.call_deferred()
 
@@ -58,6 +94,9 @@ func _handle_command_line() -> void:
 			if "--shot-build" in args:
 				shot.press_actions.assign(["go_home", "build_mode"])
 				shot.look_down = true
+			for ui in args:
+				if ui.begins_with("--shot-ui="):
+					shot.ui_steps.assign(ui.trim_prefix("--shot-ui=").split(","))
 			get_tree().root.add_child(shot)
 	for arg in args:
 		if arg == "--host":
@@ -67,102 +106,142 @@ func _handle_command_line() -> void:
 			_join()
 
 
-# --- Left panel: name and play ---------------------------------------------
+# --- Left: title, name and play ---------------------------------------------------
 
-func _build_left_panel() -> Control:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size.x = 300
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	panel.add_child(box)
+func _build_left() -> Control:
+	var col := UiTheme.vbox(14)
+	col.custom_minimum_size.x = 340
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	var title := Label.new()
-	title.text = "Hometown Pals"
-	title.add_theme_font_size_override("font_size", 34)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(title)
-	var subtitle := Label.new()
-	subtitle.text = "Style yourself, build a home,\nand bring your pet along!"
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(subtitle)
-	box.add_child(HSeparator.new())
+	col.add_child(UiTheme.label("Hometown Pals", &"Title", 50))
+	var tagline := UiTheme.label("Style yourself, build a home,\nand bring your pet along!", &"WorldLabel", 19)
+	tagline.add_theme_font_override("font", UiTheme.font(800))
+	col.add_child(tagline)
 
-	box.add_child(_heading("Your player name"))
-	var parts: Dictionary = _profile["name_parts"]
-	var adj := _option(SafeNames.NAME_ADJECTIVES, parts["adjective"], func(i): _set_name_part("adjective", i))
-	var noun := _option(SafeNames.NAME_NOUNS, parts["noun"], func(i): _set_name_part("noun", i))
-	var number := SpinBox.new()
-	number.min_value = 0
-	number.max_value = 99
-	number.value = parts["number"]
-	number.value_changed.connect(func(v): _set_name_part("number", int(v)))
-	var name_row := HBoxContainer.new()
-	name_row.add_child(adj)
-	name_row.add_child(noun)
-	name_row.add_child(number)
-	box.add_child(name_row)
-	_controls["name_adjective"] = adj
-	_controls["name_noun"] = noun
-	_controls["name_number"] = number
-	_name_label = Label.new()
-	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.add_theme_font_size_override("font_size", 20)
+	var name_card := UiTheme.card()
+	col.add_child(name_card)
+	var box := UiTheme.vbox(8)
+	name_card.add_child(box)
+	box.add_child(UiTheme.label("Your name", &"Hint"))
+	_name_label = UiTheme.label("", &"Heading", 28)
 	box.add_child(_name_label)
-	_update_name_label()
-	var safety := Label.new()
-	safety.text = "Names are made from friendly words, and chat\nuses preset phrases, so everyone stays safe."
-	safety.add_theme_font_size_override("font_size", 12)
-	safety.modulate = Color(1, 1, 1, 0.7)
+	var buttons := UiTheme.hbox(8)
+	box.add_child(buttons)
+	var dice := UiTheme.button("New name", "game_die", &"BlueButton", "Pick a random name")
+	dice.add_theme_font_size_override("font_size", 18)
+	dice.pressed.connect(_random_name)
+	buttons.add_child(dice)
+	var pick := UiTheme.button("Choose", "pencil", &"", "Choose the words in your name")
+	pick.add_theme_font_size_override("font_size", 18)
+	pick.pressed.connect(_open_name_picker)
+	buttons.add_child(pick)
+	var safety := UiTheme.label("Names use friendly words and chat uses set phrases, so everyone stays safe.",
+			&"Hint", 13)
+	safety.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	safety.custom_minimum_size.x = 300
 	box.add_child(safety)
-	box.add_child(HSeparator.new())
+	_update_name_label()
 
-	var randomize := Button.new()
-	randomize.text = "Surprise me! (random style)"
-	randomize.pressed.connect(_randomize)
-	box.add_child(randomize)
+	col.add_child(UiTheme.spacer())
 
-	box.add_child(_heading("Play"))
-	var play := Button.new()
-	play.text = "Play (host a world)" if Net.online_available else "Play"
-	play.custom_minimum_size.y = 44
+	var surprise := UiTheme.button("Surprise me!", "sparkles", &"PurpleButton", "Try a random style")
+	surprise.custom_minimum_size.y = 56
+	surprise.pressed.connect(_randomize)
+	col.add_child(surprise)
+
+	_message = UiTheme.card(&"Banner")
+	_message.add_theme_stylebox_override("panel", UiTheme.box(UiTheme.RED, 18, 0, Color.TRANSPARENT,
+			Vector4(16, 10, 16, 10)))
+	var message_label := UiTheme.label("", &"", 16, Color.WHITE)
+	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	message_label.custom_minimum_size.x = 300
+	_message.add_child(message_label)
+	col.add_child(_message)
+
+	_friends = _build_friends()
+	col.add_child(_friends)
+
+	var play := UiTheme.button("Play!", "", &"PrimaryButton")
+	play.icon = UiTheme.play_icon()
+	play.custom_minimum_size.y = 80
+	play.add_theme_font_size_override("font_size", 34)
+	play.add_theme_constant_override("icon_max_width", 34)
+	play.tooltip_text = "Start your neighborhood" + (". Friends can join you." if Net.online_available else "")
 	play.pressed.connect(_play)
-	box.add_child(play)
-	var port_row := HBoxContainer.new()
-	port_row.visible = Net.online_available
-	var port_label := Label.new()
-	port_label.text = "Port"
-	port_row.add_child(port_label)
+	col.add_child(play)
+	if Net.online_available:
+		var friends := UiTheme.button("Play with friends", "busts_in_silhouette", &"",
+				"Join a friend's neighborhood")
+		friends.custom_minimum_size.y = 54
+		friends.pressed.connect(func(): _friends.visible = not _friends.visible)
+		col.add_child(friends)
+	else:
+		var solo := UiTheme.label("In the browser your neighborhood is just for you. "
+				+ "Playing with friends needs the downloaded game.", &"WorldLabel", 14)
+		solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		solo.custom_minimum_size.x = 300
+		col.add_child(solo)
+	return col
+
+
+## Joining details, for the downloaded game.
+func _build_friends() -> PanelContainer:
+	var card := UiTheme.card()
+	card.visible = false
+	var box := UiTheme.vbox(8)
+	card.add_child(box)
+	box.add_child(UiTheme.label("Join a friend", &"Heading", 20))
+	var join_row := UiTheme.hbox(8)
+	box.add_child(join_row)
+	_address = LineEdit.new()
+	_address.text = "127.0.0.1"
+	_address.placeholder_text = "Friend's address"
+	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	join_row.add_child(_address)
+	var join := UiTheme.button("Join", "", &"BlueButton")
+	join.pressed.connect(_join)
+	join_row.add_child(join)
+	var port_row := UiTheme.hbox(8)
+	box.add_child(port_row)
+	port_row.add_child(UiTheme.label("Port", &"Hint"))
 	_port = SpinBox.new()
 	_port.min_value = 1024
 	_port.max_value = 65535
 	_port.value = Net.DEFAULT_PORT
 	_port.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	port_row.add_child(_port)
-	box.add_child(port_row)
-	var join_row := HBoxContainer.new()
-	join_row.visible = Net.online_available
-	_address = LineEdit.new()
-	_address.text = "127.0.0.1"
-	_address.placeholder_text = "Host address"
-	_address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	join_row.add_child(_address)
-	var join := Button.new()
-	join.text = "Join"
-	join.pressed.connect(_join)
-	join_row.add_child(join)
-	box.add_child(join_row)
-	if not Net.online_available:
-		var solo := Label.new()
-		solo.text = "In the browser, the neighborhood is just for you.\nPlaying with friends needs the downloaded game."
-		solo.add_theme_font_size_override("font_size", 12)
-		solo.modulate = Color(1, 1, 1, 0.7)
-		box.add_child(solo)
+	box.add_child(UiTheme.label("Play! hosts on this port too.", &"Hint", 13))
+	return card
 
-	_message = Label.new()
-	_message.modulate = Color("ffb3b3")
-	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_message)
-	return panel
+
+func _build_spin_hint() -> Control:
+	var holder := UiTheme.vbox()
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.alignment = BoxContainer.ALIGNMENT_END
+	var chip := UiTheme.card(&"Banner")
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_theme_stylebox_override("panel", UiTheme.box(Color(UiTheme.INK, 0.55), 20, 0, Color.TRANSPARENT,
+			Vector4(14, 6, 16, 8)))
+	var row := UiTheme.hbox(8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.add_child(row)
+	row.add_child(UiTheme.texture_rect(UiTheme.icon("counterclockwise_arrows_button"), 22))
+	row.add_child(UiTheme.label("Drag to spin", &"", 16, Color.WHITE))
+	holder.add_child(chip)
+	return holder
+
+
+func _show_message(text: String) -> void:
+	_message.visible = text != ""
+	(_message.get_child(0) as Label).text = text
+
+
+# --- Names --------------------------------------------------------------------------
+
+func _update_name_label() -> void:
+	_name_label.text = SafeNames.display_name(_profile["name_parts"])
 
 
 func _set_name_part(key: String, value: int) -> void:
@@ -171,8 +250,96 @@ func _set_name_part(key: String, value: int) -> void:
 	GameState.save_profile()
 
 
-func _update_name_label() -> void:
-	_name_label.text = SafeNames.display_name(_profile["name_parts"])
+func _random_name() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	_profile["name_parts"] = SafeNames.random_name_parts(rng)
+	_update_name_label()
+	GameState.save_profile()
+
+
+## A card with every name word as a button, plus the number.
+func _build_name_picker() -> PanelContainer:
+	var card := UiTheme.card()
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	card.visible = false
+	var box := UiTheme.vbox(12)
+	card.add_child(box)
+	var head := UiTheme.hbox(10)
+	box.add_child(head)
+	head.add_child(UiTheme.texture_rect(UiTheme.icon("pencil"), 36))
+	var title := UiTheme.label("", &"Heading", 28)
+	title.name = "Preview"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton")
+	done.add_theme_font_size_override("font_size", 22)
+	done.add_theme_constant_override("icon_max_width", 28)
+	done.pressed.connect(_close_name_picker)
+	head.add_child(done)
+	var cols := UiTheme.hbox(12)
+	box.add_child(cols)
+	for part in [["adjective", SafeNames.NAME_ADJECTIVES], ["noun", SafeNames.NAME_NOUNS]]:
+		var well := UiTheme.card(&"Well")
+		cols.add_child(well)
+		var grid := GridContainer.new()
+		grid.name = part[0]
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 6)
+		grid.add_theme_constant_override("v_separation", 6)
+		well.add_child(grid)
+		for i in part[1].size():
+			var chip := UiTheme.button(part[1][i], "", &"ChipButton")
+			chip.toggle_mode = true
+			chip.custom_minimum_size = Vector2(98, 40)
+			chip.pressed.connect(func():
+				_set_name_part(part[0], i)
+				_fill_name_picker())
+			grid.add_child(chip)
+	var number := UiTheme.card(&"Well")
+	cols.add_child(number)
+	var num_box := UiTheme.vbox(8)
+	num_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	number.add_child(num_box)
+	num_box.add_child(UiTheme.label("Number", &"Hint"))
+	for step in [1, 0, -1]:
+		if step == 0:
+			var value := UiTheme.label("", &"Heading", 36)
+			value.name = "Number"
+			value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			num_box.add_child(value)
+			continue
+		var b := UiTheme.icon_button("up_arrow" if step > 0 else "down_arrow", "", 56)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		b.add_theme_constant_override("icon_max_width", 28)
+		b.pressed.connect(func():
+			_set_name_part("number", posmod(int(_profile["name_parts"]["number"]) + step, 100))
+			_fill_name_picker())
+		num_box.add_child(b)
+	return card
+
+
+func _fill_name_picker() -> void:
+	var parts: Dictionary = _profile["name_parts"]
+	(_name_picker.find_child("Preview", true, false) as Label).text = SafeNames.display_name(parts)
+	(_name_picker.find_child("Number", true, false) as Label).text = str(parts["number"])
+	for key in ["adjective", "noun"]:
+		var grid := _name_picker.find_child(key, true, false)
+		for i in grid.get_child_count():
+			grid.get_child(i).set_pressed_no_signal(i == int(parts[key]))
+
+
+func _open_name_picker() -> void:
+	_fill_name_picker()
+	_name_picker.visible = true
+	_scrim.visible = true
+
+
+func _close_name_picker() -> void:
+	_name_picker.visible = false
+	_scrim.visible = false
 
 
 func _play() -> void:
@@ -185,225 +352,318 @@ func _join() -> void:
 	Net.request_join(_address.text.strip_edges(), int(_port.value))
 
 
-# --- Preview ------------------------------------------------------------------
+# --- The 3D stage -------------------------------------------------------------------
 
-func _build_preview() -> Control:
-	var container := SubViewportContainer.new()
-	container.stretch = true
-	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.gui_input.connect(_on_preview_input)
-	var vp := SubViewport.new()
-	vp.own_world_3d = true
-	vp.msaa_3d = Viewport.MSAA_4X
-	container.add_child(vp)
-
+func _build_stage() -> void:
+	var stage := Node3D.new()
+	add_child(stage)
 	var env := WorldEnvironment.new()
-	var environment := Lighting.environment(false)
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color("8ec5ff")
-	env.environment = environment
-	vp.add_child(env)
-	var light := Lighting.sun()
-	light.rotation_degrees = Vector3(-35, 30, 0)
-	vp.add_child(light)
-	var floor_node := Node3D.new()
-	vp.add_child(floor_node)
-	MeshUtil.cylinder(floor_node, 1.6, 1.6, 0.1, Color("7fc46a"), Vector3(0, -0.05, 0))
-
+	env.environment = Lighting.environment(false)
+	stage.add_child(env)
+	var sun := Lighting.sun()
+	sun.rotation_degrees = Vector3(-40, 25, 0)
+	stage.add_child(sun)
+	var ground := Node3D.new()
+	stage.add_child(ground)
+	MeshUtil.cylinder(ground, 60.0, 60.0, 0.1, Color("8fd27a"), Vector3(0, -0.12, 0))
+	MeshUtil.cylinder(ground, 1.75, 1.85, 0.14, Color("fbf3e4"), Vector3(0, -0.07, 0))
+	MeshUtil.cylinder(ground, 1.6, 1.6, 0.15, Color("e9b97f"), Vector3(0, -0.06, 0))
 	_preview_root = Node3D.new()
-	vp.add_child(_preview_root)
-	_preview_camera = Camera3D.new()
-	_preview_camera.fov = 40
-	vp.add_child(_preview_camera)
-	_preview_camera.position = _camera_goal
-	return container
+	stage.add_child(_preview_root)
+	_camera = Camera3D.new()
+	_camera.fov = 32
+	stage.add_child(_camera)
+	_camera.make_current()
 
 
-func _on_preview_input(event: InputEvent) -> void:
+func _on_drag_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
 	elif event is InputEventMouseMotion and _dragging:
-		_preview_spin += event.relative.x * 0.01
+		_spin += event.relative.x * 0.01
 
 
 func _process(delta: float) -> void:
 	if not _dragging:
-		_preview_spin += delta * 0.3
-	if _preview_root:
-		var avatar := _preview_root.get_node_or_null("Avatar") as Node3D
-		if avatar:
-			avatar.rotation.y = sin(_preview_spin) * 0.6
-	if _preview_camera:
-		_preview_camera.position = _preview_camera.position.lerp(_camera_goal, minf(6.0 * delta, 1.0))
-		_preview_camera.look_at(_camera_target)
+		_spin += delta * 0.3
+	var avatar := _preview_root.get_node_or_null("Avatar") as Node3D
+	if avatar:
+		avatar.rotation.y = sin(_spin) * 0.6
+	_place_camera(delta)
 
 
-func _focus_camera(on_face: bool) -> void:
-	var h := float(_profile["avatar"]["height"])
-	if on_face:
-		_camera_target = Vector3(0, 1.58 * h, 0)
-		_camera_goal = Vector3(0.15, 1.62 * h, 1.5)
-	else:
-		_camera_target = Vector3(0.2, 0.95, 0)
-		_camera_goal = Vector3(0.7, 1.2, 4.0)
+## Looks at the current view's target, shifted sideways so it sits in the gap
+## between the left column and the style card.
+func _place_camera(delta: float) -> void:
+	var t := minf(6.0 * delta, 1.0)
+	_camera_target = _camera_target.lerp(_view_target(), t)
+	_camera_distance = lerpf(_camera_distance, CAMERA_DISTANCE.get(_view, 4.6), t)
+	_camera.position = _camera_target + Vector3(0.18, 0.12, 1.0).normalized() * _camera_distance
+	_camera.look_at(_camera_target)
+	var screen := get_viewport_rect().size
+	if screen.x <= 0.0:
+		return
+	var gap_center := (_left.get_global_rect().end.x + _card.get_global_rect().position.x) / 2.0
+	var ndc := gap_center / screen.x * 2.0 - 1.0
+	var half_width := tan(deg_to_rad(_camera.fov) / 2.0) * screen.x / screen.y * _camera_distance
+	_camera.h_offset = -ndc * half_width
+
+
+func _view_target() -> Vector3:
+	var face := AvatarBuilder.face_height(_profile["avatar"])
+	match _view:
+		"face":
+			return Vector3(0, face - 0.02, 0)
+		"head":
+			return Vector3(0, face - 0.15, 0)
+		"pet":
+			var pet := _preview_root.get_node_or_null("PetModel") as Node3D
+			return (pet.position if pet else Vector3.ZERO) + Vector3(0, 0.3, 0)
+	return Vector3(0, face * 0.57, 0)
 
 
 func _rebuild_preview() -> void:
 	for child in _preview_root.get_children():
 		child.free()
-	var avatar := AvatarBuilder.build(_profile["avatar"])
-	_preview_root.add_child(avatar)
+	_preview_root.add_child(AvatarBuilder.build(_profile["avatar"]))
 	var pet := PetBuilder.build(_profile["pet"])
-	pet.position = Vector3(0.9, 0, 0.4)
-	pet.rotation_degrees.y = -30
+	# In front of the avatar, so it stays in the gap between the cards.
+	pet.position = Vector3(0.5, 0, 0.7)
+	pet.rotation_degrees.y = -25
 	_preview_root.add_child(pet)
 
 
-# --- Style tabs ---------------------------------------------------------------
+# --- Right: the style card ------------------------------------------------------------
 
-func _build_tabs() -> Control:
-	var tabs := TabContainer.new()
-	tabs.custom_minimum_size.x = 360
-	tabs.add_child(_tab("Face", [
-		["Eyes", "eyes"], ["Eye color", "eye_color", AvatarBuilder.EYE_COLORS],
-		["Eyebrows", "brows"], ["Nose", "nose"], ["Mouth", "mouth"], ["Cheeks", "cheeks"],
-		["Glasses", "glasses"], ["Glasses color", "glasses_color", CLOTH_COLORS],
-	]))
-	tabs.add_child(_tab("Body & Hair", [
-		["Skin tone", "skin", AvatarBuilder.SKIN_TONES], ["Height", "height"], ["Body", "build"],
-		["Hair style", "hair"], ["Hair color", "hair_color", AvatarBuilder.HAIR_COLORS],
-	]))
-	tabs.add_child(_tab("Clothes", [
-		["Top", "top"], ["Top color", "top_color", CLOTH_COLORS], ["Top detail color", "top_accent", CLOTH_COLORS],
-		["Bottoms", "bottom"], ["Bottoms color", "bottom_color", CLOTH_COLORS],
-		["Shoes", "shoes"], ["Shoe color", "shoe_color", CLOTH_COLORS],
-	]))
-	tabs.add_child(_tab("Extras", [
-		["Hat & hair clips", "hat"], ["Hat color", "hat_color", CLOTH_COLORS],
-		["On your back", "back"], ["Back item color", "back_color", CLOTH_COLORS],
-	]))
-	tabs.add_child(_pet_tab())
-	tabs.tab_changed.connect(func(i): _focus_camera(i == 0))
-	_focus_camera(true)
-	return tabs
-
-
-func _tab(title: String, rows: Array) -> Control:
-	var scroll := ScrollContainer.new()
-	scroll.name = title
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	var box := VBoxContainer.new()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation", 6)
-	scroll.add_child(box)
-	var avatar: Dictionary = _profile["avatar"]
-	for row in rows:
-		var key: String = row[1]
-		box.add_child(_heading(row[0]))
-		if row.size() > 2:
-			box.add_child(_color_row(avatar, key, row[2]))
-		elif key == "height":
-			var slider := HSlider.new()
-			slider.min_value = 0.85
-			slider.max_value = 1.15
-			slider.step = 0.01
-			slider.value = avatar["height"]
-			slider.value_changed.connect(func(v): _set_avatar("height", v))
-			box.add_child(slider)
-			_controls["avatar_height"] = slider
-		else:
-			var opt := _option(AvatarBuilder.OPTIONS[key], avatar[key], func(i): _set_avatar(key, i))
-			box.add_child(opt)
-			_controls["avatar_" + key] = opt
-	return scroll
+func _build_style_card() -> PanelContainer:
+	_tabs = _creator_tabs()
+	var card := UiTheme.card()
+	card.custom_minimum_size.x = 560
+	var box := UiTheme.vbox(12)
+	card.add_child(box)
+	var tab_row := UiTheme.hbox(8)
+	box.add_child(tab_row)
+	for i in _tabs.size():
+		var b := UiTheme.stacked_button(_tabs[i]["title"], _tabs[i]["icon"], &"TabButton", 40)
+		b.toggle_mode = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size.y = 78
+		b.pressed.connect(_show_tab.bind(i))
+		tab_row.add_child(b)
+		_tab_buttons.append(b)
+	_part_row = HFlowContainer.new()
+	_part_row.add_theme_constant_override("h_separation", 6)
+	_part_row.add_theme_constant_override("v_separation", 6)
+	box.add_child(_part_row)
+	box.add_child(HSeparator.new())
+	_content = UiTheme.vbox(10)
+	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(_content)
+	return card
 
 
-func _pet_tab() -> Control:
-	var box := VBoxContainer.new()
-	box.name = "Pet"
-	box.add_theme_constant_override("separation", 6)
-	var pet: Dictionary = _profile["pet"]
-	box.add_child(_heading("Kind of pet"))
-	box.add_child(_option(PetBuilder.SPECIES, pet["species"], func(i):
-		_set_pet("species", i)
-		_fill_pet_looks()))
-	box.add_child(_heading("Pet name"))
-	var names := _option(SafeNames.PET_NAMES, maxi(SafeNames.PET_NAMES.find(pet["name"]), 0),
-			func(i): _set_pet("name", SafeNames.PET_NAMES[i]))
-	box.add_child(names)
-	_pet_looks = VBoxContainer.new()
-	_pet_looks.add_theme_constant_override("separation", 6)
-	box.add_child(_pet_looks)
-	_fill_pet_looks()
-	return box
+## Turns AvatarBuilder.tabs() into tabs of parts: an option row together with
+## the color rows that follow it. The pet gets its own tab.
+func _creator_tabs() -> Array:
+	var out := []
+	for tab in AvatarBuilder.tabs():
+		var parts := []
+		for row in tab["rows"]:
+			var colors: bool = row.has("colors")
+			if colors and not parts.is_empty() and parts[-1]["kind"] == "options":
+				parts[-1]["colors"].append(row)
+				continue
+			var kind := "colors" if colors else ("slider" if row["key"] == "height" else "options")
+			parts.append({"label": row["label"], "icon": row.get("icon", tab.get("icon", "sparkles")),
+				"key": row["key"], "kind": kind, "view": row.get("view", tab.get("view", "body")),
+				"colors": [row] if colors else []})
+		out.append({"title": tab["title"], "icon": tab.get("icon", "sparkles"), "view": tab.get("view", "body"),
+			"parts": parts})
+	out.append({"title": "Pet", "icon": "paw_prints", "view": "pet", "parts": [
+		{"label": "Kind", "icon": "paw_prints", "key": "species", "kind": "pet_species", "view": "pet", "colors": []},
+		{"label": "Name", "icon": "label", "key": "name", "kind": "pet_name", "view": "pet", "colors": []},
+		{"label": "Looks", "icon": "artist_palette", "key": "coat", "kind": "pet_looks", "view": "pet", "colors": []},
+	]})
+	return out
 
 
-## Pets with a model choose a coat; the shape-built ones choose colors.
-func _fill_pet_looks() -> void:
-	for child in _pet_looks.get_children():
+func _show_tab(i: int) -> void:
+	_tab = clampi(i, 0, _tabs.size() - 1)
+	for j in _tab_buttons.size():
+		_tab_buttons[j].set_pressed_no_signal(j == _tab)
+	for child in _part_row.get_children():
 		child.free()
-	var pet: Dictionary = _profile["pet"]
-	if PetBuilder.has_art(pet):
-		_pet_looks.add_child(_heading("Coat"))
-		_pet_looks.add_child(_option(PetBuilder.coat_names(pet), pet["coat"], func(i): _set_pet("coat", i)))
+	var parts: Array = _tabs[_tab]["parts"]
+	for j in parts.size():
+		var chip := UiTheme.button(parts[j]["label"], parts[j]["icon"], &"ChipButton")
+		chip.toggle_mode = true
+		chip.custom_minimum_size.y = 44
+		chip.pressed.connect(_show_part.bind(j))
+		_part_row.add_child(chip)
+	_part_row.visible = parts.size() > 1
+	_show_part(0)
+
+
+func _show_part(j: int) -> void:
+	var parts: Array = _tabs[_tab]["parts"]
+	_part = clampi(j, 0, parts.size() - 1)
+	for k in _part_row.get_child_count():
+		_part_row.get_child(k).set_pressed_no_signal(k == _part)
+	var part: Dictionary = parts[_part]
+	_view = part["view"] if CAMERA_DISTANCE.has(part["view"]) else "body"
+	for child in _content.get_children():
+		child.free()
+	_option_grid = null
+	match part["kind"]:
+		"options":
+			_add_option_grid(part)
+		"slider":
+			_add_height_slider()
+		"pet_species":
+			_add_pet_species()
+		"pet_name":
+			_add_pet_names()
+		"pet_looks":
+			_add_pet_looks()
+	for row in part["colors"]:
+		_add_color_row(row)
+	if part["kind"] == "colors":
+		_content.add_child(UiTheme.spacer())
+
+
+## Every choice for one option key, each with a picture of you wearing it.
+func _add_option_grid(part: Dictionary) -> void:
+	var key: String = part["key"]
+	var view: String = part["view"]
+	_option_grid = _new_grid(CARD_SIZES)
+	_option_grid.show_names = true
+	_option_grid.select(str(int(_profile["avatar"].get(key, 0))))
+	_option_grid.set_items(_option_items(key, view))
+	_option_grid.chosen.connect(func(k): _set_avatar(key, int(k)))
+
+
+## One card per choice, each showing you with that choice and your colors.
+func _option_items(key: String, view: String) -> Array:
+	var choices := AvatarBuilder.options(key)
+	var items := []
+	for i in choices.size():
+		var config: Dictionary = _profile["avatar"].duplicate()
+		config[key] = i
+		var thumb_key := "avatar:%s:%s" % [view, JSON.stringify(config).md5_text()]
+		items.append({"key": str(i), "name": str(choices[i]),
+			"thumb": func(): return Thumbs.texture(thumb_key, func(): return AvatarBuilder.build(config), view)})
+	return items
+
+
+func _add_height_slider() -> void:
+	var well := UiTheme.card(&"Well")
+	_content.add_child(well)
+	var row := UiTheme.hbox(12)
+	well.add_child(row)
+	row.add_child(UiTheme.texture_rect(UiTheme.icon("person_standing"), 32))
+	var slider := HSlider.new()
+	slider.min_value = 0.85
+	slider.max_value = 1.15
+	slider.step = 0.01
+	slider.value = _profile["avatar"]["height"]
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slider.custom_minimum_size.y = 40
+	slider.value_changed.connect(func(v): _set_avatar("height", v))
+	row.add_child(slider)
+	row.add_child(UiTheme.texture_rect(UiTheme.icon("person_standing"), 52))
+	_content.add_child(UiTheme.spacer())
+
+
+func _add_color_row(row: Dictionary, is_pet := false) -> void:
+	_content.add_child(UiTheme.label(row["label"], &"Hint", 16))
+	var target: Dictionary = _profile["pet"] if is_pet else _profile["avatar"]
+	var palette := SwatchRow.new(row["colors"], str(target.get(row["key"], "")))
+	palette.color_chosen.connect(func(hex):
+		if is_pet:
+			_set_pet(row["key"], hex)
+		else:
+			_set_avatar(row["key"], hex))
+	_fit_swatches(palette)
+	_content.add_child(palette)
+
+
+## Shrinks a long row of swatches to fit one line where it can, which leaves
+## the picture grid above room for a second row of cards.
+func _fit_swatches(palette: SwatchRow) -> void:
+	var width := _content.size.x if _content.size.x > 0.0 else 520.0
+	var count := palette.get_child_count()
+	var natural := float((count - 1) * palette.get_theme_constant("h_separation"))
+	for swatch in palette.get_children():
+		natural += swatch.custom_minimum_size.x
+	if natural <= width:
 		return
-	for row in [["Fur / feather color", "color"], ["Belly & ear color", "accent"], ["Collar color", "collar"]]:
-		_pet_looks.add_child(_heading(row[0]))
-		_pet_looks.add_child(_color_row(pet, row[1], CLOTH_COLORS + ["e8a35a", "fff3e0", "c49a6c"], true))
+	var gap := 5
+	var side := clampi(floori((width + gap) / count) - gap, 28, SwatchRow.SWATCH)
+	palette.add_theme_constant_override("h_separation", gap)
+	palette.add_theme_constant_override("v_separation", gap)
+	for swatch in palette.get_children():
+		swatch.custom_minimum_size = Vector2(swatch.custom_minimum_size.x if swatch.text != "" else side, side)
+		if swatch.icon:
+			swatch.add_theme_constant_override("icon_max_width", side - 10)
 
 
-func _heading(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", 14)
-	l.modulate = Color("ffe9a8")
-	return l
+func _add_pet_species() -> void:
+	var grid := _new_grid([Vector2(112, 130)])
+	grid.show_names = true
+	var pet: Dictionary = _profile["pet"]
+	var items := []
+	for i in PetBuilder.SPECIES.size():
+		var config := PetBuilder.sanitize(pet.merged({"species": i, "coat": 0}, true))
+		items.append({"key": str(i), "name": PetBuilder.SPECIES[i], "thumb": _pet_thumb.bind(config)})
+	grid.select(str(int(pet["species"])))
+	grid.set_items(items)
+	grid.chosen.connect(func(k):
+		_set_pet("species", int(k))
+		_show_part(_part))
 
 
-func _option(items: Array, selected: int, on_select: Callable) -> OptionButton:
-	var opt := OptionButton.new()
-	for item in items:
-		opt.add_item(str(item))
-	opt.select(clampi(selected, 0, items.size() - 1))
-	opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	opt.item_selected.connect(on_select)
-	return opt
+func _add_pet_names() -> void:
+	var grid := _new_grid([Vector2(116, 52)])
+	var items := []
+	for pet_name in SafeNames.PET_NAMES:
+		items.append({"key": pet_name, "name": pet_name})
+	grid.select(_profile["pet"]["name"])
+	grid.set_items(items)
+	grid.chosen.connect(func(k): _set_pet("name", k))
 
 
-## A row of preset swatches plus a picker for any custom color.
-func _color_row(target: Dictionary, key: String, palette: Array, is_pet := false) -> Control:
-	var flow := HFlowContainer.new()
-	var picker := ColorPickerButton.new()
-	picker.edit_alpha = false
-	picker.custom_minimum_size = Vector2(44, 26)
-	picker.color = MeshUtil.hex(target[key])
-	picker.tooltip_text = "Pick any color"
-	for hex_value in palette:
-		var swatch := Button.new()
-		swatch.custom_minimum_size = Vector2(26, 26)
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color.html(hex_value)
-		style.set_corner_radius_all(13)
-		style.set_border_width_all(2)
-		style.border_color = Color(1, 1, 1, 0.5)
-		for state in ["normal", "hover", "pressed", "focus"]:
-			swatch.add_theme_stylebox_override(state, style)
-		swatch.pressed.connect(func():
-			picker.color = Color.html(hex_value)
-			_set_color(key, hex_value, is_pet))
-		flow.add_child(swatch)
-	picker.color_changed.connect(func(c): _set_color(key, c.to_html(false), is_pet))
-	flow.add_child(picker)
-	if not is_pet:
-		_controls["color_" + key] = picker
-	return flow
+## Pets with a model pick a coat; the shape-built ones pick colors.
+func _add_pet_looks() -> void:
+	var pet: Dictionary = _profile["pet"]
+	if not PetBuilder.has_art(pet):
+		for row in [["Fur or feathers", "color"], ["Belly and ears", "accent"], ["Collar", "collar"]]:
+			_add_color_row({"label": row[0], "key": row[1], "colors": PET_COLORS}, true)
+		_content.add_child(UiTheme.spacer())
+		return
+	var grid := _new_grid(CARD_SIZES)
+	grid.show_names = true
+	var names := PetBuilder.coat_names(pet)
+	var items := []
+	for i in names.size():
+		var config := PetBuilder.sanitize(pet.merged({"coat": i}, true))
+		items.append({"key": str(i), "name": names[i], "thumb": _pet_thumb.bind(config)})
+	grid.select(str(int(pet["coat"])))
+	grid.set_items(items)
+	grid.chosen.connect(func(k): _set_pet("coat", int(k)))
 
 
-func _set_color(key: String, hex_value: String, is_pet: bool) -> void:
-	if is_pet:
-		_set_pet(key, hex_value)
-	else:
-		_set_avatar(key, hex_value)
+func _pet_thumb(config: Dictionary) -> Texture2D:
+	var cache := PetBuilder.has_art(config)
+	return Thumbs.texture("pet:" + JSON.stringify(config), func(): return PetBuilder.build(config), "pet", cache)
+
+
+func _new_grid(card_sizes: Array) -> ItemGrid:
+	var grid := ItemGrid.new()
+	grid.card_size = card_sizes[0]
+	grid.card_sizes = card_sizes
+	_content.add_child(grid)
+	return grid
 
 
 func _set_avatar(key: String, value: Variant) -> void:
@@ -411,6 +671,10 @@ func _set_avatar(key: String, value: Variant) -> void:
 	_profile["avatar"] = AvatarBuilder.sanitize(_profile["avatar"])
 	GameState.save_profile()
 	_rebuild_preview()
+	# The pictures of the choices show the new color too.
+	var part: Dictionary = _tabs[_tab]["parts"][_part]
+	if value is String and _option_grid:
+		_option_grid.set_items(_option_items(part["key"], part["view"]), true)
 
 
 func _set_pet(key: String, value: Variant) -> void:
@@ -425,13 +689,6 @@ func _randomize() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	_profile["avatar"] = AvatarBuilder.random_config(rng)
-	var avatar: Dictionary = _profile["avatar"]
-	for key in AvatarBuilder.OPTIONS:
-		if _controls.has("avatar_" + key):
-			_controls["avatar_" + key].select(avatar[key])
-	_controls["avatar_height"].set_value_no_signal(avatar["height"])
-	for key in avatar:
-		if _controls.has("color_" + key):
-			_controls["color_" + key].color = MeshUtil.hex(avatar[key])
 	GameState.save_profile()
 	_rebuild_preview()
+	_show_part(_part)

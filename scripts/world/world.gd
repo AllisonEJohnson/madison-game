@@ -49,17 +49,24 @@ func _ready() -> void:
 	add_child(_hud)
 	_hud.phrase_chosen.connect(_send_phrase)
 	_hud.build_toggled.connect(_toggle_build)
-	_hud.leave_pressed.connect(func(): Net.back_to_menu())
+	_hud.home_pressed.connect(_go_home)
+	_hud.pet_action.connect(_pet_action)
+	_hud.leave_confirmed.connect(func(): Net.back_to_menu())
 	_build = BuildController.new()
 	add_child(_build)
 	_build.layout_edited.connect(_submit_house)
-	_hud.item_selected.connect(func(id):
-		_build.select_item(id)
-		_hud.set_build_selection(id, _build.item_color, _build.item_style))
+	_build.item_placed.connect(func(key):
+		GameState.add_recent(key)
+		_hud.refresh_recent())
+	_hud.entry_chosen.connect(func(id, style):
+		_build.select_item(id, style)
+		_show_build_selection())
 	_hud.color_changed.connect(_build.set_color)
 	_hud.style_stepped.connect(func(step):
 		_build.step_style(step)
-		_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style))
+		_show_build_selection())
+	_hud.rotate_pressed.connect(_build.rotate_item)
+	_hud.erase_toggled.connect(_build.set_erasing)
 
 	Net.status_changed.connect(_hud.set_status)
 	Net.connection_ready.connect(_on_connection_ready)
@@ -148,13 +155,14 @@ func _spawn_player(data: Dictionary) -> Node:
 
 
 func _setup_local_player(player: Player) -> void:
-	_hud.set_pet(player.pet.config["name"], PetBuilder.species_name(player.pet.config))
+	_hud.set_player(player.display_name, GameState.profile["avatar"])
+	_hud.set_pet(player.pet.config["name"], PetBuilder.species_name(player.pet.config), player.pet.config)
 	player.pet_needs_changed.connect(_hud.set_pet_needs)
 	var plot: int = player_plots.get(player.peer_id, -1)
 	if plot >= 0:
 		_build.house = houses[plot]
 		_build.player = player
-		_hud.toast("Welcome, %s! Your home is plot %d. Press H to go there." % [player.display_name, plot + 1])
+		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go there." % [player.display_name, plot + 1])
 	else:
 		_hud.toast("Welcome! The neighborhood is full, so you are visiting today.")
 
@@ -257,37 +265,56 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_build()
 	elif event.is_action_pressed("build_style") and _build.active:
 		_build.step_style(1)
-		_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style)
+		_show_build_selection()
 	elif event.is_action_pressed("quick_chat"):
 		_hud.open_quick_chat()
 	elif event.is_action_pressed("go_home"):
-		var plot: int = player_plots.get(local_player.peer_id, -1)
-		if plot >= 0:
-			local_player.teleport(houses[plot].to_global(Vector3(0, 0.5, House.PLOT_SIZE / 2.0 + 1.5)))
-			local_player.set_camera_yaw(houses[plot].rotation.y)
+		_go_home()
 	elif event.is_action_pressed("menu"):
-		if _build.active:
+		# Esc closes the top-most thing first, and asks before leaving.
+		if _hud.close_popups():
+			pass
+		elif _build.active:
 			_toggle_build()
 		else:
-			Net.back_to_menu()
-	elif event.is_action_pressed("pet_feed") or event.is_action_pressed("pet_play"):
-		var pet := local_player.pet
-		if pet.global_position.distance_to(local_player.global_position) > 4.0:
-			_hud.toast("Get closer to %s first!" % pet.config["name"])
-		elif event.is_action_pressed("pet_feed"):
-			pet.feed()
-			local_player.pet_reaction.rpc(0, 0)
-		else:
-			local_player.pet_reaction.rpc(1, pet.play())
+			_hud.ask_leave()
+	elif event.is_action_pressed("pet_feed"):
+		_pet_action(true)
+	elif event.is_action_pressed("pet_play"):
+		_pet_action(false)
+
+
+func _go_home() -> void:
+	var plot: int = player_plots.get(local_player.peer_id, -1) if local_player else -1
+	if plot >= 0:
+		local_player.teleport(houses[plot].to_global(Vector3(0, 0.5, House.PLOT_SIZE / 2.0 + 1.5)))
+		local_player.set_camera_yaw(houses[plot].rotation.y)
+
+
+func _pet_action(feed: bool) -> void:
+	if not local_player:
+		return
+	var pet := local_player.pet
+	if pet.global_position.distance_to(local_player.global_position) > 4.0:
+		_hud.toast("Get closer to %s first!" % pet.config["name"])
+	elif feed:
+		pet.feed()
+		local_player.pet_reaction.rpc(0, 0)
+	else:
+		local_player.pet_reaction.rpc(1, pet.play())
 
 
 func _toggle_build() -> void:
 	if not _build.house:
-		_hud.toast("You need a plot to build. The neighborhood is full right now.")
+		_hud.toast("You need a home to decorate. The neighborhood is full right now.")
 		return
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)
-	_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style)
+	_show_build_selection()
+
+
+func _show_build_selection() -> void:
+	_hud.set_build_selection(_build.item_id, _build.item_color, _build.item_style, _build.erasing)
 
 
 func _process(delta: float) -> void:

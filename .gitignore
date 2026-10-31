@@ -4,4 +4,4 @@
 build/*
 !build/.gdignore
 # Licensed art from the private madison-game-art repo (clone it here, see README).
-/itHappy/
+/itHappy

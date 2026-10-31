@@ -106,17 +106,17 @@ func place(id: String, x: int, z: int, r: int, color_hex: String, style := 0) ->
 	return true
 
 
-## Removes the top-most thing in a cell: an object, then a wall, then the floor.
+## Removes the furniture on a cell. Walls and floors are part of the house,
+## so they stay.
 func remove_at(x: int, z: int) -> bool:
-	for wanted in ["object", "wall", "floor"]:
-		for i in range(layout.size() - 1, -1, -1):
-			var item: Dictionary = layout[i]
-			if FurnitureCatalog.layer(item["id"]) != wanted:
-				continue
-			if Vector2i(x, z) in FurnitureCatalog.cells(item["id"], item["x"], item["z"], item["r"]):
-				layout.remove_at(i)
-				_rebuild()
-				return true
+	for i in range(layout.size() - 1, -1, -1):
+		var item: Dictionary = layout[i]
+		if FurnitureCatalog.layer(item["id"]) != "object":
+			continue
+		if Vector2i(x, z) in FurnitureCatalog.cells(item["id"], item["x"], item["z"], item["r"]):
+			layout.remove_at(i)
+			_rebuild()
+			return true
 	return false
 
 

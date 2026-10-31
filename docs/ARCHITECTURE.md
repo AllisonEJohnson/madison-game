@@ -4,8 +4,14 @@
 
 ```
 autoload/
-  game_state.gd      Local profile (name, avatar, pet, house) saved to user://profile.json; input map
+  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents) saved to
+                     user://profile.json; input map
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
+  thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
+assets/
+  kaykit_forest/     Trees, bushes, rocks and grass from the free KayKit Forest pack (CC0; see "Art")
+  ui/fonts/          Fredoka (headings) and Nunito (text), variable fonts, SIL Open Font License
+  ui/icons/          Fluent Emoji pictures as 128 px PNGs (MIT)
 scenes/
   main_menu.tscn     Character creator + play buttons (scripts/ui/main_menu.gd)
   world.tscn         The neighborhood (scripts/world/world.gd)
@@ -18,7 +24,12 @@ scripts/
   house/house.gd              A plot: grid layout, place/remove, validation
   house/build_controller.gd   Mouse-driven build mode with ghost preview
   player/player.gd            Movement, camera, animation, network sync
-  ui/hud.gd                   In-world UI
+  ui/ui_theme.gd              The shared look: palette, fonts, Theme, and button/card/label helpers
+  ui/item_grid.gd             Paged grid of picture cards with favorite stars
+  ui/catalog_browser.gd       Category rail + group chips + search + Favorites/Recent around an ItemGrid
+  ui/swatch_row.gd            Color swatches plus a rainbow button for any color
+  ui/main_menu.gd             Character creator, pet picker, name picker and play buttons
+  ui/hud.gd                   In-world UI: player and pet cards, dock, chat, dialogs, build drawer
   world/scenery.gd            Ground, roads, plaza, trees, bushes and flowers
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
@@ -40,6 +51,46 @@ Everything a player owns is a small JSON-friendly Dictionary of option indices a
 
 Adding a new hat, hairstyle or furniture piece is one entry in an options list plus a few lines that
 build its shape. Builders also have a `sanitize()` that clamps any config to valid values.
+
+## UI
+
+All screens are built in code from the helpers in `scripts/ui/ui_theme.gd`, so they share one look.
+`UiTheme.theme()` returns one Theme with named type variations (`PrimaryButton`, `TabButton`,
+`CardButton`, `ChipButton`, `Card`, `Heading`, `Hint`, `KeyBadge` and so on); a control picks one with
+`theme_type_variation`, and helpers like `UiTheme.button(text, icon, variation)` or
+`UiTheme.icon_button(icon, tooltip, size, key)` set it for you. Colors live in the palette constants
+at the top of that file. Rules of thumb for a kids' game: buttons at least about 48 px tall, a picture
+on every button, short words, and a key badge on any button that also has a keyboard key.
+
+**Icons** are named after their Fluent Emoji file, for example `UiTheme.icon("house")`
+(`assets/ui/icons/house.png`); an unknown name falls back to a sparkle. To add one, drop in a 128 px PNG
+of the "Color" style (the SVGs use filters Godot can't draw, so they're rasterized first), then run
+`godot --headless --path . --import` once, because `*.import` files are not committed.
+
+**Thumbnails.** `Thumbs.texture(key, build, view)` returns a Texture2D at once and fills it in a
+frame or two later: `build` is a Callable that returns a fresh Node3D, which is rendered in a small
+off-screen SubViewport with an orthographic camera fitted to its bounds. `view` picks the angle
+(`item`, `face`, `head`, `torso`, `legs`, `feet`, `back`, `pet`, `portrait`). Newest requests render
+first, so flipping pages quickly never waits on pages already gone. Pass `disk = true` for the licensed
+models; those pictures are cached in `user://thumbs/` (bump `DISK_VERSION` when the renders change).
+Keys must change whenever what they show changes, so avatar pictures include a hash of the config.
+
+**Big catalogs.** `ItemGrid` only builds cards for the page on screen and asks for their pictures when
+the page is shown, so 20 items or 2,000 cost the same. `CatalogBrowser` wraps it with category tabs
+(`{id, name, icon}`), group chips and search over entries `{key, name, category, group, thumb, tags}`.
+Build mode lists every furniture style as its own entry (`FurnitureCatalog.entries()`, key `"id:style"`),
+and new furniture just needs a `category` from `FurnitureCatalog.CATEGORIES`. Walls, floors and fences
+have no category: they belong to the ready-built house, so players can't place or remove them. Favorites and recents are
+stored in the profile by key, are local only, and skip keys that no longer exist. As a stress test,
+`--shot-ui=stress` loads all 818 Bright Furniture prefabs into the build catalog: setup takes about
+30 ms and a page of pictures about 2 seconds the first time.
+
+**Character creator.** The tabs come from `AvatarBuilder.tabs()`: a list of
+`{title, icon, view, rows: [{label, key, icon?, view?, colors?}]}`. A row whose key has options becomes
+a picture grid (`AvatarBuilder.options(key)`), a row with `colors` becomes a swatch row, and `height` is
+a slider. `view` (a row's own, else its tab's) sets both the thumbnail angle and where the preview
+camera zooms.
+`AvatarBuilder.face_height(config)` tells the camera where the face is.
 
 ## Art
 
