@@ -66,6 +66,8 @@ func load_profile() -> void:
 		return
 	profile["name_parts"] = SafeNames.clean_name_parts(data.get("name_parts"))
 	profile["avatar"] = AvatarBuilder.sanitize(data.get("avatar"))
+	# The pets waiting at home; the one with you is "pet" (see PetCollection).
+	profile["pets"] = PetCollection.clean_save(data)
 	var pet := PetBuilder.sanitize(data.get("pet"))
 	if data.get("pet") is Dictionary:
 		pet["fullness"] = float(data["pet"].get("fullness", 80.0))

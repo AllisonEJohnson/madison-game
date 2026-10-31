@@ -35,8 +35,8 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | WASD / arrows | Move |
 | Space | Jump |
 | Right mouse drag / wheel | Look around / zoom |
-| E | Use what's here: the shop counter, the signpost by your home, or Star Chase in Starfall Glade |
-| F / G | Feed / play with your pet |
+| E | Use what's here: the shop counter, the signpost by your home, Star Chase in Starfall Glade, or saying hi to a wild pet |
+| F / G | Feed / play with your pet (the paw button on the pet card opens My pets) |
 | T | Quick chat (preset phrases) |
 | B | Decorate your home (left click place, right click or the wastebasket removes, R turn, E next look) |
 | H | Go inside your home (walk out the front door to come back to town) |
@@ -72,9 +72,13 @@ currency or XP away. It changes this device's save only.
   and more). Characters idle, walk, run and jump. Every color has kid-friendly swatches plus a full color
   picker, and "Surprise me" randomizes everything. Without the licensed art, the creator falls back to a
   simpler shape avatar with its own options.
-- **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
-  each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
-  with, and have fullness and happiness that slowly drop.
+- **Pets**: cats and kittens, dogs and birds (19 animated coats) are everyone's from the start. 13 more
+  kinds live in the wild: a raccoon, fox and fawn in town; a bear cub, panda cub, koala, tiger cub and the
+  rare glimmer cub and honey bear in Starfall Glade; a penguin chick, polar bear cub, lion cub and a rare
+  pegasus in the Sky Garden. Walk up to one, say hi, give it a name and make friends (40 XP), and it
+  waits at home until you bring it along from **My pets**. Most wild kinds can also be had at once for
+  Stardust; the three rare ones can only be found. Pets follow you, walk and run, wander when you stand
+  still, react when fed or played with, and each keeps its own fullness and happiness.
 - **Homes**: each player gets a big plot in town with a ready-built home, starting with the free Sprout
   Cottage. Town only shows homes from outside: walk into the front door to go inside, to a space of its
   own, and back out the same way. Players decorate the inside with 18 kinds of furniture (beds, sofas, a
@@ -94,10 +98,10 @@ currency or XP away. It changes this device's save only.
   with a few special ones for Stardust, the premium currency. Prices show on every catalog card, in build
   mode and in the creator, where you can try anything on first. The starter home, the default character
   and the first look of most pieces stay free, and everything already in an older save stays owned.
-- **Levels**: XP for picking up acorns, Star Chase, pet care, decorating, exploring and coming back each
-  day fills the bar on your player card. Each level pays Acorns, and many open something: Starfall Glade at
-  level 2, the **Sky Garden** (a floating flower island above the glade) at level 5, new kinds of things in
-  the shop, or a gift like the Bunny costume. A Star Boost (Stardust) doubles XP for 30 minutes.
+- **Levels**: XP for picking up acorns, Star Chase, pet care, making friends with wild pets, decorating,
+  exploring and coming back each day fills the bar on your player card. Each level pays Acorns, and many
+  open something: Starfall Glade (and its wild pets) at level 2, the **Sky Garden** (a floating flower
+  island above the glade) at level 5, new kinds of things in the shop, or a gift like the Bunny costume. A Star Boost (Stardust) doubles XP for 30 minutes.
 - **Wallet**: Acorns (earned) and Stardust (premium) balances and membership, shown on the player card.
   Stardust can't be bought yet; the admin console grants it for testing.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
@@ -136,6 +140,9 @@ godot --headless --path . -- --host --levels-test
 
 # Headless check of every home's plan, buying homes and rooms, moving, capacity and old saves
 godot --headless --path . -- --host --homes-test
+
+# Headless check of pets: wild pets in every land, making friends, buying, switching, old saves
+godot --headless --path . -- --host --pets-test
 
 # Two-process multiplayer smoke test (prints what each peer sees)
 godot --headless --path . -- --host --smoke-test &

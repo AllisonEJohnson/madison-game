@@ -39,9 +39,9 @@ const HELP := [
 	["Right-drag", "eye", "Look around"], ["Wheel", "magnifying_glass_tilted_left", "Zoom in and out"],
 	["F", "meat_on_bone", "Feed your pet"], ["G", "tennis", "Play with your pet"],
 	["T", "speech_balloon", "Say something"], ["B", "couch_and_lamp", "Decorate your home"],
-	["H", "house", "Go to your home"], ["E", "shopping_bags", "Use a shop or game nearby"],
+	["H", "house", "Go inside your home"], ["E", "shopping_bags", "Use a shop or game nearby"],
 	["Walk", "chestnut", "Pick up acorns to spend"], ["Homes", "house_with_garden", "Move homes, add rooms"],
-	["Esc", "door", "Leave"],
+	["E", "paw_prints", "Say hi to a wild pet"], ["Esc", "door", "Leave"],
 ]
 ## Paints for furniture made from shapes (pieces without model styles).
 const HOUSE_COLORS := ["f1e7d6", "ffffff", "f7d9c4", "ffe8a3", "cdeac0", "bfe0f5", "d9c8f0", "f5c6d6",
@@ -63,6 +63,10 @@ var _pet_name: Label
 var _pet_kind: Label
 var _fullness: ProgressBar
 var _happiness: ProgressBar
+## All your pets, and the card for meeting a wild one (the world's PetKeeper
+## listens to both).
+var pets_panel: PetsPanel
+var adopt_card: AdoptCard
 var _dock: PanelContainer
 var _chat_box: VBoxContainer
 var _toast: PanelContainer
@@ -144,6 +148,7 @@ func _ready() -> void:
 	_leave = _build_leave()
 	_result = _build_result()
 	_build_level_cards()
+	_build_pet_cards()
 	_build_shop()
 	_build_homes()
 	_build_prompt()
@@ -243,6 +248,10 @@ func _build_pet_card() -> void:
 		b.pressed.connect(func(): pet_action.emit(pair[0]))
 		UiTheme.add_key_badge(b, pair[4])
 		buttons.add_child(b)
+	var all := UiTheme.icon_button("paw_prints", "My pets: all your pets, and the ones still in the wild", 50)
+	all.add_theme_constant_override("icon_max_width", 30)
+	all.pressed.connect(open_pets)
+	buttons.add_child(all)
 
 
 func _need_bar(parent: Control, icon_name: String, tooltip: String, color: Color) -> ProgressBar:
@@ -904,7 +913,7 @@ func _show_only(card: Control) -> void:
 
 
 func _cards() -> Array:
-	return [_phrases, _help, _leave, _result, _shop, _homes, _level_card, _level_up]
+	return [_phrases, _help, _leave, _result, _shop, _homes, _level_card, _level_up, pets_panel, adopt_card]
 
 
 func _process(delta: float) -> void:
@@ -973,13 +982,39 @@ func set_pet(pet_name: String, species: String, config := {}) -> void:
 	_pet_name.text = pet_name
 	_pet_kind.text = "Your " + species.to_lower()
 	if not config.is_empty():
-		_pet_pic.texture = Thumbs.texture("pet:" + JSON.stringify(PetBuilder.sanitize(config)),
-				func(): return PetBuilder.build(config), "pet")
+		_pet_pic.texture = PetCollection.thumb(config)
 
 
 func set_pet_needs(fullness: float, happiness: float) -> void:
 	_fullness.value = fullness
 	_happiness.value = happiness
+
+
+# --- Pets ----------------------------------------------------------------------------
+
+func _build_pet_cards() -> void:
+	pets_panel = _place(PetsPanel.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	pets_panel.visible = false
+	pets_panel.closed.connect(func(): _show_only(null))
+	pets_panel.stardust_info.connect(func():
+		toast("The Stardust store is coming soon! A grown-up will help you get Stardust there."))
+	adopt_card = _place(AdoptCard.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	adopt_card.visible = false
+
+
+## My pets, starting on the pet with you.
+func open_pets() -> void:
+	if pets_panel.visible:
+		return
+	pets_panel.refresh()
+	_show_only(pets_panel)
+
+
+## The card for meeting a wild pet (see AdoptCard.show_wild).
+func open_adopt(config: Dictionary, owned_name: String) -> void:
+	adopt_card.show_wild(config, owned_name)
+	if not adopt_card.visible:
+		_show_only(adopt_card)
 
 
 func add_chat(speaker: String, text: String) -> void:

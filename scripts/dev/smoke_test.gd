@@ -3,9 +3,9 @@ extends Node
 ##   godot --headless --path . -- --host --smoke-test
 ##   godot --headless --path . -- --join=127.0.0.1 --smoke-test
 ## The client goes inside its home, edits it, adds a room to it, sends a
-## phrase and puts on a hat from the shop. Then the host walks into the
-## client's home to visit. Both print what they see (players show only to
-## those in the same place, town or the same home).
+## phrase, puts on a hat from the shop and brings a new pet along. Then the
+## host walks into the client's home to visit. Both print what they see
+## (players show only to those in the same place, town or the same home).
 
 var _t := 0.0
 var _edited := false
@@ -32,6 +32,8 @@ func _process(delta: float) -> void:
 		# Add a room to the home: everyone should see it on the plot.
 		var type := Homes.current()
 		GameState.unlock([HomeCatalog.room_key(type, HomeCatalog.addons(type)[0]["id"])])
+		PetCollection.adopt("fox", "Pickles")
+		world._pets.choose("fox")
 	# The host starts about 3 seconds first, so the client's edits are done by 6.
 	if multiplayer.is_server() and _t > 6.5 and not _visited:
 		_visited = true
@@ -61,5 +63,8 @@ func _process(delta: float) -> void:
 		for id in world.player_avatars:
 			print("[smoke] peer %d: player %d changed avatar, hat %d" % [multiplayer.get_unique_id(), id,
 					world.player_avatars[id]["hat"]])
+		for player in world.get_node("Players").get_children():
+			print("[smoke] peer %d: player %s has a %s" % [multiplayer.get_unique_id(), player.name,
+					player.pet.config["species"]])
 		if not multiplayer.is_server():
 			get_tree().quit()

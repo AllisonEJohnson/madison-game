@@ -19,6 +19,9 @@ extends Node
 ## or room up close), "visit:<home type>" (moves into a home you own and goes inside; "admin:unlock all"
 ## first owns them all), "outside[:<door>]" (walks back out to town), "decorate" (starts decorating,
 ## looking down into the home) and "plans" (shows where rooms can be added, as when decorating).
+## For pets: "wild:<land>[/<n>]" (stands by a wild pet), "meet" (says hi), "befriend" (makes
+## friends), "pets" (opens My pets), "petpick:<species>", "petfilter:<id>" and "petbring:<species>"
+## (brings one of your pets along).
 ## "sleep:<seconds>" pauses before the next step.
 ## --shot-wait=<seconds> waits longer before the picture (default 5), for pictures to render.
 
@@ -168,6 +171,28 @@ func _ui_step(step: String) -> void:
 			cam.position = Vector3(v[0], v[1], v[2])
 			cam.look_at(Vector3(v[3], v[4], v[5]), Vector3.UP if absf(v[1] - v[4]) < 1.0 or absf(v[0] - v[3]) + absf(v[2] - v[5]) > 0.1 else Vector3.FORWARD)
 			cam.make_current()
+		"wild":
+			# Stands just east of a wild pet ("wild:glade/1": the second one in the glade),
+			# looking north so both show. Going up to the Sky Garden first needs the "sky" step.
+			var v := arg.split("/")
+			var wild: WildPets = scene._pets._wild.filter(func(w): return w.land == v[0])[0]
+			var pet: WildPet = wild.pets()[int(v[1]) if v.size() > 1 else 0]
+			scene.local_player.teleport(pet.global_position + Vector3(1.5, 0.5, 0.4))
+			scene.local_player.set_camera_yaw(0.0)
+			scene.local_player.set_camera_view(-0.3, 4.0)
+		"meet":
+			scene._process(0.0)
+			scene._use_zone()
+		"befriend":
+			hud.adopt_card.press_befriend()
+		"pets":
+			hud.open_pets()
+		"petpick":
+			hud.pets_panel.pick(arg)
+		"petfilter":
+			hud.pets_panel.show_filter(arg)
+		"petbring":
+			scene._pets.choose(arg)
 		"chasedone":
 			hud.show_game_result(int(arg), StarChase.reward_for(int(arg)), true,
 					int(arg) * int(Levels.SOURCES["star"]["xp"]))

@@ -78,11 +78,7 @@ func setup(data: Dictionary) -> void:
 	add_child(_bubble)
 
 	var is_mine: bool = peer_id == int(data.get("viewer_id", -1))
-	pet = Pet.new()
-	pet.name = "Pet"
-	pet.setup(data.get("pet", {}), self, is_mine)
-	pet.needs_changed.connect(func(f, h): pet_needs_changed.emit(f, h))
-	add_child(pet)
+	set_pet(data.get("pet", {}), is_mine)
 
 	var sync := MultiplayerSynchronizer.new()
 	sync.name = "Sync"
@@ -203,6 +199,23 @@ func set_avatar(config: Dictionary) -> void:
 	_bubble.position.y = head_top + 0.7
 
 
+## Brings a different pet along (say, a new friend from the wild). The new
+## one starts beside you.
+func set_pet(config: Dictionary, is_mine: bool) -> void:
+	var at := Vector3.INF
+	if pet:
+		at = pet.global_position if pet.is_inside_tree() else Vector3.INF
+		remove_child(pet)
+		pet.queue_free()
+	pet = Pet.new()
+	pet.name = "Pet"
+	pet.setup(config, self, is_mine)
+	pet.needs_changed.connect(func(f, h): pet_needs_changed.emit(f, h))
+	add_child(pet)
+	if at != Vector3.INF:
+		pet.global_position = at
+
+
 func teleport(world_pos: Vector3) -> void:
 	position = world_pos
 	_last_pos = world_pos
@@ -237,5 +250,5 @@ func say(text: String) -> void:
 func pet_reaction(action: int, sound: int) -> void:
 	if not pet:
 		return
-	var sounds: Array = PetBuilder.SOUNDS[PetBuilder.species_name(pet.config)]
+	var sounds: Array = PetBuilder.sounds(pet.config)
 	pet.show_emote("Yum!" if action == 0 else sounds[clampi(sound, 0, sounds.size() - 1)])

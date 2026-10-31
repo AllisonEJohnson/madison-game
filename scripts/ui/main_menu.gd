@@ -97,6 +97,8 @@ func _handle_command_line() -> void:
 	var args := OS.get_cmdline_user_args()
 	if "--smoke-test" in args:
 		get_tree().root.add_child(load("res://scripts/dev/smoke_test.gd").new())
+	if "--pets-test" in args:
+		get_tree().root.add_child(load("res://scripts/dev/pets_test.gd").new())
 	if "--economy-test" in args:
 		get_tree().root.add_child(load("res://scripts/dev/economy_test.gd").new())
 	if "--levels-test" in args:
@@ -545,7 +547,7 @@ func _rebuild_preview(avatar := {}) -> void:
 	_preview_root.add_child(AvatarBuilder.build(_profile["avatar"] if avatar.is_empty() else avatar))
 	var pet := PetBuilder.build(_profile["pet"])
 	# In front of the avatar, so it stays in the gap between the cards.
-	pet.position = Vector3(0.5, 0, 0.7)
+	pet.position = Vector3(0.5, PetBuilder.HOVER if PetBuilder.hovers(_profile["pet"]) else 0.0, 0.7)
 	pet.rotation_degrees.y = -25
 	_preview_root.add_child(pet)
 
@@ -597,7 +599,7 @@ func _creator_tabs() -> Array:
 		out.append({"title": tab["title"], "icon": tab.get("icon", "sparkles"), "view": tab.get("view", "body"),
 			"parts": parts})
 	out.append({"title": "Pet", "icon": "paw_prints", "view": "pet", "parts": [
-		{"label": "Kind", "icon": "paw_prints", "key": "species", "kind": "pet_species", "view": "pet", "colors": []},
+		{"label": "Your pets", "icon": "paw_prints", "key": "species", "kind": "pet_species", "view": "pet", "colors": []},
 		{"label": "Name", "icon": "label", "key": "name", "kind": "pet_name", "view": "pet", "colors": []},
 		{"label": "Looks", "icon": "artist_palette", "key": "coat", "kind": "pet_looks", "view": "pet", "colors": []},
 	]})
@@ -726,18 +728,27 @@ func _fit_swatches(palette: SwatchRow) -> void:
 			swatch.add_theme_constant_override("icon_max_width", side - 10)
 
 
+## Every kind of pet: yours to pick from, and the wild ones still to find
+## (picking one of those says where it lives).
 func _add_pet_species() -> void:
+	var hint := UiTheme.label("Cats, dogs and birds are yours from the start. Find the others in the wild!",
+			&"Hint", 15)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(hint)
 	var grid := _new_grid([Vector2(112, 130)])
 	grid.show_names = true
-	var pet: Dictionary = _profile["pet"]
 	var items := []
-	for i in PetBuilder.SPECIES.size():
-		var config := PetBuilder.sanitize(pet.merged({"species": i, "coat": 0}, true))
-		items.append({"key": str(i), "name": PetBuilder.SPECIES[i], "thumb": _pet_thumb.bind(config)})
-	grid.select(str(int(pet["species"])))
+	for species in PetBuilder.SPECIES:
+		items.append(PetsPanel.card_item(species))
+	grid.select(PetCollection.active_species())
 	grid.set_items(items)
 	grid.chosen.connect(func(k):
-		_set_pet("species", int(k))
+		if not PetCollection.owns(k):
+			hint.text = PetsPanel.where_text(k)
+			grid.select(PetCollection.active_species(), false)
+			return
+		_profile["pet"] = PetCollection.switch_to(k, _profile["pet"])
+		_rebuild_preview()
 		_show_part(_part))
 
 
@@ -772,8 +783,7 @@ func _add_pet_looks() -> void:
 
 
 func _pet_thumb(config: Dictionary) -> Texture2D:
-	var cache := PetBuilder.has_art(config)
-	return Thumbs.texture("pet:" + JSON.stringify(config), func(): return PetBuilder.build(config), "pet", cache)
+	return PetCollection.thumb(config)
 
 
 func _new_grid(card_sizes: Array) -> ItemGrid:
@@ -797,9 +807,7 @@ func _set_avatar(key: String, value: Variant) -> void:
 
 func _set_pet(key: String, value: Variant) -> void:
 	_profile["pet"][key] = value
-	# Keeps the coat in range for the new species (the profile also holds needs).
-	_profile["pet"]["coat"] = PetBuilder.sanitize(_profile["pet"])["coat"]
-	GameState.save_profile()
+	PetCollection.update(_profile["pet"])
 	_rebuild_preview()
 
 
