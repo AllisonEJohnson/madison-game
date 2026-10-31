@@ -131,6 +131,9 @@ func _ready() -> void:
 	_build_shop()
 	_build_prompt()
 	_build_game_bar()
+	# Both sit under the dimmed backdrop of the centered cards.
+	_root.move_child(_prompt, _scrim.get_index())
+	_root.move_child(_game_bar, _scrim.get_index())
 	_build_build_mode()
 	GameState.earned.connect(_on_earned)
 	GameState.owned_changed.connect(_refresh_prices)

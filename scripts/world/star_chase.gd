@@ -1,7 +1,7 @@
 class_name StarChase
 extends Node3D
 ## Star Chase, a little game in Starfall Glade. Step onto the glowing ring by
-## the crystal and press Play: a star falls somewhere nearby, marked by a beam
+## the portal and press Play: a star falls somewhere nearby, marked by a beam
 ## of light, and catching it makes the next one fall. Catch as many as you can
 ## before the time runs out; every star is worth Acorns.
 ##
@@ -11,7 +11,7 @@ extends Node3D
 ## Every frame while a game runs: the countdown before it starts (0 once it
 ## has), stars caught so far, and seconds left.
 signal ticked(countdown: float, caught: int, time_left: float)
-signal finished(caught: int, reward: int, new_best: bool)
+signal finished(caught: int, reward: int)
 
 const LENGTH := 45.0
 const COUNTDOWN := 3.0
@@ -23,7 +23,7 @@ const REACH := 1.4
 const FALL_TIME := 0.7
 const HOVER := 1.3
 ## Stars land this far (in meters) from the field's center.
-const FIELD := Vector2(6.0, 22.0)
+const FIELD := Vector2(4.0, 20.0)
 const PAD_RADIUS := 1.5
 const GLOW := Color("ffd84a")
 
@@ -46,6 +46,9 @@ var _last_spot := -1
 var _ready_frames := 2
 var _time := 0.0
 var _pad_ring: MeshInstance3D
+var _sign: Node3D # the sign and star over the ring, hidden during a game
+## A glowing arrow over the player's head that points at the star.
+var _pointer: Node3D
 
 
 func _init() -> void:
@@ -55,6 +58,9 @@ func _init() -> void:
 
 func _ready() -> void:
 	_build_pad()
+	_pointer = _build_pointer()
+	_pointer.visible = false
+	add_child(_pointer)
 	zone = InteractZone.new().setup("Star Chase", "Catch falling stars for Acorns!", "glowing_star", "Play",
 			PAD_RADIUS + 0.6)
 	add_child(zone)
@@ -74,6 +80,7 @@ func start() -> void:
 	_caught = 0
 	_last_spot = -1
 	zone.enabled = false
+	_sign.visible = false
 	ticked.emit(_countdown, _caught, _time_left)
 
 
@@ -120,9 +127,14 @@ func _process(delta: float) -> void:
 		var land_y := _star_spot.y + HOVER + sin(_time * 3.0) * 0.12
 		_star.position = Vector3(_star_spot.x, lerpf(_star_spot.y + 14.0, land_y, 1.0 - pow(1.0 - fall, 3.0)), _star_spot.z)
 		(_star.get_node("Pic") as Node3D).scale = Vector3.ONE * (1.0 + 0.12 * sin(_time * 7.0))
-		if player and is_instance_valid(player) and player.is_inside_tree() and fall >= 1.0:
+		_pointer.visible = false
+		if player and is_instance_valid(player) and player.is_inside_tree():
 			var here := to_local(player.global_position)
-			if Vector2(here.x - _star_spot.x, here.z - _star_spot.z).length() < REACH:
+			var to_star := Vector2(_star_spot.x - here.x, _star_spot.z - here.z)
+			_pointer.visible = to_star.length() > 4.0
+			_pointer.position = here + Vector3(0, 2.9 + sin(_time * 5.0) * 0.08, 0)
+			_pointer.rotation.y = atan2(to_star.x, to_star.y)
+			if fall >= 1.0 and to_star.length() < REACH:
 				_caught += 1
 				_drop_star()
 	if _time_left <= 0.0:
@@ -135,15 +147,12 @@ func _process(delta: float) -> void:
 func _finish() -> void:
 	_playing = false
 	zone.enabled = true
+	_sign.visible = true
+	_pointer.visible = false
 	if _star:
 		_star.queue_free()
 		_star = null
-	var reward := reward_for(_caught)
-	var best: bool = _caught > int(GameState.profile.get("chase_best", 0))
-	if best:
-		GameState.profile["chase_best"] = _caught
-		GameState.save_profile()
-	finished.emit(_caught, reward, best)
+	finished.emit(_caught, reward_for(_caught))
 
 
 static func reward_for(caught: int) -> int:
@@ -196,11 +205,46 @@ func _build_star() -> Node3D:
 	var light := StandardMaterial3D.new()
 	light.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	light.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	light.albedo_color = Color(GLOW, 0.32)
+	light.albedo_color = Color(GLOW, 0.42)
 	light.cull_mode = BaseMaterial3D.CULL_DISABLED
 	beam.material_override = light
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(beam)
+	return root
+
+
+## An arrow pointing along +Z (the node turns it toward the star).
+func _build_pointer() -> Node3D:
+	var root := Node3D.new()
+	root.name = "Pointer"
+	root.scale = Vector3.ONE * 1.7
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = GLOW
+	mat.emission_enabled = true
+	mat.emission = GLOW
+	mat.emission_energy_multiplier = 0.8
+	var shaft := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.16, 0.08, 0.5)
+	shaft.mesh = box
+	shaft.position.z = -0.1
+	shaft.material_override = mat
+	root.add_child(shaft)
+	var head := MeshInstance3D.new()
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 0.24
+	cone.height = 0.4
+	cone.radial_segments = 4
+	cone.rings = 1
+	head.mesh = cone
+	head.rotation_degrees.x = 90.0
+	head.position.z = 0.3
+	head.scale = Vector3(1, 1, 0.35)
+	head.material_override = mat
+	root.add_child(head)
+	for mesh in [shaft, head]:
+		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return root
 
 
@@ -215,13 +259,15 @@ func _build_pad() -> void:
 	glow.emission_energy_multiplier = 1.2
 	_pad_ring.material_override = glow
 	_pad_ring.scale = Vector3(1, 0.35, 1)
+	_sign = Node3D.new()
+	add_child(_sign)
 	var star := Sprite3D.new()
 	star.texture = UiTheme.icon("glowing_star")
 	star.pixel_size = 0.006
 	star.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	star.shaded = false
 	star.position.y = 2.2
-	add_child(star)
+	_sign.add_child(star)
 	var sign := Label3D.new()
 	sign.text = "Star Chase"
 	sign.font = UiTheme.font(700, true)
@@ -232,4 +278,4 @@ func _build_pad() -> void:
 	sign.modulate = Color("fff3b0")
 	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	sign.position.y = 3.1
-	add_child(sign)
+	_sign.add_child(sign)

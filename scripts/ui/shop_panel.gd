@@ -59,7 +59,7 @@ func _init() -> void:
 		amount.mouse_filter = Control.MOUSE_FILTER_PASS
 		coins.add_child(amount)
 		_wallet_labels[currency] = amount
-	var get_more := UiTheme.icon_button("shooting_star", "Get more Stardust", 46)
+	var get_more := UiTheme.icon_button("plus", "Get more Stardust", 46)
 	get_more.add_theme_constant_override("icon_max_width", 26)
 	get_more.pressed.connect(func(): stardust_info.emit())
 	coins.add_child(get_more)

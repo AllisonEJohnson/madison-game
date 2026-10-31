@@ -320,7 +320,8 @@ func _on_acorn(amount: int, golden: bool, _where: Vector3) -> void:
 		_hud.toast("A golden acorn! +%d Acorns" % amount)
 
 
-func _on_chase_finished(caught: int, reward: int, new_best: bool) -> void:
+func _on_chase_finished(caught: int, reward: int) -> void:
+	var new_best := GameState.record_best("chase_best", caught)
 	GameState.earn("acorns", reward)
 	_hud.show_game_result(caught, reward, new_best)
 

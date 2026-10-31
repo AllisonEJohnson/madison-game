@@ -35,18 +35,20 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | WASD / arrows | Move |
 | Space | Jump |
 | Right mouse drag / wheel | Look around / zoom |
+| E | Use what's here: the shop counter, or Star Chase in Starfall Glade |
 | F / G | Feed / play with your pet |
 | T | Quick chat (preset phrases) |
 | B | Decorate your home (left click place, right click or the wastebasket removes, R turn, E next look) |
 | H | Go to your home |
+| Shop button | Open the shop (or click your wallet) |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
 
 Walk into the glowing portal west of the plaza to visit **Starfall Glade**, and through its portal to come back.
 
 **Admin console** (for the game's makers): press <kbd>`</kbd> (left of 1) to open it. It only exists when
 running from the editor or with `godot --path . -- --admin`. `stardust 500` grants premium currency,
-`acorns 500` grants earned currency, `member 30` adds 30 days of membership, `wallet` shows balances and
-`help` lists commands. Amounts can be negative to take currency away. It changes this device's save only.
+`acorns 500` grants earned currency, `member 30` adds 30 days of membership, `unlock all` owns everything in
+the shop (`unlock reset` takes it back, except what you wear or have placed), `wallet` shows balances and `help` lists commands. Amounts can be negative to take currency away. It changes this device's save only.
 
 ## What's in the prototype
 
@@ -72,8 +74,15 @@ running from the editor or with `godot --path . -- --admin`. `stardust 500` gran
   several styles; the walls and floors stay as built. Homes save automatically.
 - **Starfall Glade**: a fantasy land through a portal in town, with a crystal plaza, a mushroom village,
   a lily pond, a castle, floating islands and wandering fantasy animals.
+- **Earning**: Acorns float around town and Starfall Glade for anyone who walks into them (now and then a
+  golden one is worth five times as much), and **Star Chase** by the glade's portal is a 45-second game of
+  catching falling stars for Acorns.
+- **Shop**: a stall in town (and one in the glade's market) sells furniture looks and clothes for Acorns,
+  with a few special ones for Stardust, the premium currency. Prices show on every catalog card, in build
+  mode and in the creator, where you can try anything on first. The starter home, the default character
+  and the first look of most pieces stay free, and everything already in an older save stays owned.
 - **Wallet**: Acorns (earned) and Stardust (premium) balances and membership, shown on the player card.
-  Nothing earns or spends them yet; the admin console grants them for testing.
+  Stardust can't be bought yet; the admin console grants it for testing.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
 - **Kid safety**: no free-text chat or typed names. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kid-safety).
 
@@ -102,6 +111,9 @@ python3 -m http.server -d build/web 8000   # then open http://localhost:8000
 ```
 
 ```sh
+# Headless check of prices, buying, acorns, Star Chase and the shop (exit code = failures)
+godot --headless --path . -- --host --economy-test
+
 # Two-process multiplayer smoke test (prints what each peer sees)
 godot --headless --path . -- --host --smoke-test &
 godot --headless --path . -- --join=127.0.0.1 --smoke-test
@@ -117,4 +129,5 @@ godot --path . -- --host --shot-ui=goto:600/22/0/-0.45/26 --screenshot=/tmp/glad
 godot --path . -- --shot-ui=tab:3 --screenshot=/tmp/clothes.png
 godot --path . -- --host --shot-build --shot-ui=category:living --screenshot=/tmp/living.png
 godot --path . -- --host --shot-build --shot-ui=stress --screenshot=/tmp/stress.png
+godot --path . -- --host --shot-ui=shop:clothes,shopcat:hats --screenshot=/tmp/shop.png
 ```

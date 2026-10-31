@@ -182,6 +182,15 @@ func earn(currency: String, amount: int) -> void:
 	earned.emit(currency, amount)
 
 
+## Keeps a best score (like "chase_best") and says whether `score` beat it.
+func record_best(key: String, score: int) -> bool:
+	if score <= int(profile.get(key, 0)):
+		return false
+	profile[key] = score
+	save_profile()
+	return true
+
+
 func is_member() -> bool:
 	return int(profile.get("member_until", 0)) > int(Time.get_unix_time_from_system())
 

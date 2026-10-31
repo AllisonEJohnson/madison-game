@@ -11,6 +11,7 @@ extends Node
 ## (picks a piece in build mode), "chase" (starts Star Chase), "chasedone:<stars>" (shows the
 ## result card), "prompt" (shows the nearby card for the zone you stand in); in the menu "tab:<n>",
 ## "part:<n>", "try:<option>/<index>" (tries on a choice) or "names".
+## "sleep:<seconds>" pauses before the next step.
 ## --shot-wait=<seconds> waits longer before the picture (default 5), for pictures to render.
 
 var path := ""
@@ -19,6 +20,7 @@ var look_down := false # Tilts the camera to see inside the home.
 var ui_steps: Array[String] = []
 var wait := 5.0
 var _t := 0.0
+var _hold_until := 0.0
 
 
 func _process(delta: float) -> void:
@@ -37,7 +39,7 @@ func _process(delta: float) -> void:
 		if plot >= 0:
 			player.teleport(world.houses[plot].to_global(Vector3(0, 0.5, 1.5)))
 			player.set_camera_view(-1.0, 8.0)
-	if _t > 2.5 and not ui_steps.is_empty():
+	if _t > 2.5 and _t > _hold_until and not ui_steps.is_empty():
 		_ui_step(ui_steps.pop_front())
 	if _t > wait:
 		get_viewport().get_texture().get_image().save_png(path)
@@ -50,6 +52,8 @@ func _ui_step(step: String) -> void:
 	var arg := step.substr(step.find(":") + 1) if ":" in step else ""
 	var hud = scene.get("_hud")
 	match step.get_slice(":", 0):
+		"sleep":
+			_hold_until = _t + float(arg)
 		"chat":
 			hud.open_quick_chat()
 		"help":

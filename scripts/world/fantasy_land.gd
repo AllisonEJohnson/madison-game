@@ -20,8 +20,10 @@ const VILLAGE := Vector3(-30, 0, 4)
 const POND := Vector3(30, 0, 8)
 const POND_RADIUS := 9.0
 const CASTLE_Z := -50.0
-## The Star Chase ring, between the plaza's lamps and pillars, off the paths.
-const CHASE_SPOT := PLAZA + Vector3(3.3, 0, 5.7)
+## The Star Chase ring, beside the path just past the portal, so it's the
+## first thing you see on arriving. Stars fall around the market and plaza.
+const CHASE_SPOT := Vector3(-5, 0, 38.5)
+const CHASE_FIELD := Vector3(0, 0, 22)
 ## The market stall that is the glade's shop, and which way it faces.
 const SHOP_STALL := Vector3(-7, 0, 31)
 
@@ -150,7 +152,7 @@ func _ready() -> void:
 	add_child(portal)
 	chase = StarChase.new()
 	chase.position = CHASE_SPOT
-	chase.field_center = PLAZA - CHASE_SPOT
+	chase.field_center = CHASE_FIELD - CHASE_SPOT
 	add_child(chase)
 	var fancy := Art.has(DIR + TREES[0])
 	_shop(fancy)
