@@ -49,6 +49,7 @@ var _area_portals := {}
 var _lock_level := 0 # The level the portal locks were last set for.
 var _sky: SkyGarden
 var _in_sky := false
+var _pets: PetKeeper
 
 
 func _ready() -> void:
@@ -90,6 +91,12 @@ func _ready() -> void:
 		pickups.collected.connect(_on_acorn)
 	if AdminConsole.enabled():
 		add_child(AdminConsole.new())
+	# Wild pets to find in every land, and bringing a different pet along.
+	_pets = PetKeeper.new().setup(self, _hud)
+	add_child(_pets)
+	_pets.add_wild("town", _lands["town"], Scenery.acorn_spots(ACORN_SPOTS), 2, 41)
+	_pets.add_wild("glade", _glade, _glade.acorn_spots(ACORN_SPOTS), 3, 42)
+	_pets.add_wild("sky", _sky, _sky.acorn_spots(16), 2, 43)
 	_build = BuildController.new()
 	add_child(_build)
 	_build.layout_edited.connect(_submit_house)
@@ -203,6 +210,7 @@ func _setup_local_player(player: Player) -> void:
 	for pickups in _pickups:
 		pickups.player = player
 	_glade.chase.player = player
+	_pets.set_player(player)
 	_hud.set_pet(player.pet.config["name"], PetBuilder.species_name(player.pet.config), player.pet.config)
 	player.pet_needs_changed.connect(_hud.set_pet_needs)
 	var plot: int = player_plots.get(player.peer_id, -1)
@@ -354,6 +362,8 @@ func _use_zone() -> void:
 	if _zone == _glade.chase.zone:
 		_hud.close_popups()
 		_glade.chase.start()
+	elif _pets.use_zone(_zone):
+		pass
 	else:
 		_hud.open_shop()
 

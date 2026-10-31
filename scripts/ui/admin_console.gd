@@ -18,6 +18,8 @@ const HELP := [
 	"level <n>           jump to a level (level alone shows it)",
 	"level reset         start leveling over, as a new player",
 	"boost <minutes>     give a Star Boost, double XP (0 ends it)",
+	"pets all            make friends with every wild pet",
+	"pets reset          forget every wild pet you found",
 	"help                show this list",
 ]
 const MAX_AMOUNT := 1_000_000
@@ -120,6 +122,15 @@ func run(words: PackedStringArray) -> String:
 				GameState.reset_owned()
 				return "Took back what was bought. You own %d things." % GameState.profile["owned"].size()
 			return "Say unlock all, or unlock reset"
+		"pets":
+			if arg == "all":
+				for species in PetCollection.wild_kinds():
+					PetCollection.adopt(species, PetCollection.random_name())
+			elif arg == "reset":
+				PetCollection.reset()
+			else:
+				return "Say pets all, or pets reset"
+			return "You have %d of %d wild pets." % [PetCollection.found_count(), PetCollection.wild_kinds().size()]
 		"xp":
 			if not arg.is_valid_int() or absi(arg.to_int()) > MAX_AMOUNT:
 				return "Give a whole number, like: xp 100"

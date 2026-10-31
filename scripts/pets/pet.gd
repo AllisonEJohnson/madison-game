@@ -26,6 +26,8 @@ var _gesture_time := 0.0
 var _hop := 0.0
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
+var _hover := false
+var _time := 0.0
 
 
 func setup(pet_config: Dictionary, follow: Node3D, is_mine: bool) -> void:
@@ -39,7 +41,8 @@ func setup(pet_config: Dictionary, follow: Node3D, is_mine: bool) -> void:
 	_model = PetBuilder.build(config)
 	add_child(_model)
 	_animated = PetBuilder.play_clip(_model, "Idle")
-	var top := Art.bounds(_model).end.y
+	_hover = PetBuilder.hovers(config)
+	var top := Art.bounds(_model).end.y + (PetBuilder.HOVER if _hover else 0.0)
 	_emote_y = top + 0.5
 	_label = Label3D.new()
 	_label.text = config["name"]
@@ -115,7 +118,11 @@ func _follow(delta: float) -> void:
 			PetBuilder.play_clip(_model, "Run" if speed > 2.0 else "Walk")
 		elif _gesture_time <= 0.0:
 			PetBuilder.play_clip(_model, "Idle")
-	else:
+	if _hover:
+		# Winged pets float along beside you.
+		_time += delta
+		_model.position.y = PetBuilder.HOVER + sin(_time * 2.0) * 0.08
+	elif not _animated:
 		_model.position.y = absf(sin(_hop)) * 0.08 if moving else 0.0
 
 
@@ -128,7 +135,7 @@ func feed() -> void:
 func play() -> int:
 	happiness = minf(happiness + 25.0, 100.0)
 	fullness = maxf(fullness - 3.0, 0.0)
-	return randi() % PetBuilder.SOUNDS[PetBuilder.species_name(config)].size()
+	return randi() % PetBuilder.sounds(config).size()
 
 
 func show_emote(text: String) -> void:
