@@ -138,26 +138,32 @@ func _render(stage: Dictionary, job: Dictionary) -> void:
 
 
 ## Points an orthographic camera so the part of the model the view is about
-## fills the picture with a little room around it.
+## fills the picture with a little room around it. A model can name that part
+## itself with a "thumb_boxes" meta of view -> AABB (art avatars do, since
+## their head is half their height).
 func _frame(camera: Camera3D, model: Node3D, view: String) -> void:
 	var box := _bounds(model, model)
 	var head := model.find_child("Head", true, false) as Node3D
-	match view:
-		"head", "face", "portrait":
-			if head:
-				box = _bounds(head, model)
-			else:
-				box = _slice(box, 0.75, 1.0)
-			if view == "face":
-				box = box.grow(-box.size.y * 0.12)
-			elif view == "portrait":
-				box = box.merge(_slice(_bounds(model, model), 0.62, 0.8))
-		"torso":
-			box = _slice(box, 0.42, 0.86)
-		"legs":
-			box = _slice(box, 0.0, 0.58)
-		"feet":
-			box = _slice(box, 0.0, 0.2)
+	var boxes: Dictionary = model.get_meta("thumb_boxes", {})
+	if boxes.has(view):
+		box = boxes[view]
+	else:
+		match view:
+			"head", "face", "portrait":
+				if head:
+					box = _bounds(head, model)
+				else:
+					box = _slice(box, 0.75, 1.0)
+				if view == "face":
+					box = box.grow(-box.size.y * 0.12)
+				elif view == "portrait":
+					box = box.merge(_slice(_bounds(model, model), 0.62, 0.8))
+			"torso":
+				box = _slice(box, 0.42, 0.86)
+			"legs":
+				box = _slice(box, 0.0, 0.58)
+			"feet":
+				box = _slice(box, 0.0, 0.2)
 	var dir: Vector3 = VIEWS.get(view, VIEWS["item"]).normalized()
 	var center := box.get_center()
 	camera.position = center + dir * (box.size.length() + 4.0)

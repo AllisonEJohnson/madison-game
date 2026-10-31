@@ -68,13 +68,15 @@ jobs:
           path: itHappy
           persist-credentials: false
 
-      # Keeps only the models the game uses (about 15 MB of 260 MB), then
-      # imports them. The first import above made the class list it needs.
+      # Keeps only the models and animations the game uses, imports them,
+      # then strips the spare skeleton from each character part. The first
+      # import above made the class list these scripts need.
       - name: Drop unused art and import the rest
         if: env.ART_REPO_TOKEN != ''
         run: |
           ~/godot/godot --headless -s scripts/dev/prune_art.gd
           ~/godot/godot --headless --import
+          ~/godot/godot --headless -s scripts/dev/slim_parts.gd
 
       - name: Export web build
         run: |

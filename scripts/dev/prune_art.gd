@@ -11,9 +11,10 @@ var _missing := 0
 
 func _init() -> void:
 	var keep := {}
-	for path in FurnitureCatalog.art_paths() + PetBuilder.art_paths() + Scenery.art_paths():
+	for path in FurnitureCatalog.art_paths() + PetBuilder.art_paths() + Scenery.art_paths() + AvatarBuilder.art_paths():
 		_keep(Art.ROOT + path + ".tscn", keep)
 	var removed := _prune(Art.ROOT, keep)
+	_trim_animations(Art.ROOT + CharacterParts.ANIMATIONS, CharacterParts.CLIPS.values())
 	print("[prune_art] kept %d files, removed %d, missing %d" % [keep.size(), removed, _missing])
 	quit(1 if _missing > 0 else 0)
 
@@ -47,3 +48,19 @@ func _prune(dir_path: String, keep: Dictionary) -> int:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 			removed += 1
 	return removed
+
+
+## The characters' animation library holds 29 clips in a 23 MB file; keeps only
+## the ones the game plays.
+func _trim_animations(path: String, clips: Array) -> void:
+	var library := load(path) as AnimationLibrary
+	if library == null:
+		push_error("Missing animation library: " + path)
+		_missing += 1
+		return
+	for clip in library.get_animation_list():
+		if String(clip) not in clips:
+			library.remove_animation(clip)
+	ResourceSaver.save(library, path)
+	print("[prune_art] kept %d animations in %s" % [library.get_animation_list().size(), path])
+

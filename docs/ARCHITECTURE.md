@@ -17,7 +17,10 @@ scenes/
   world.tscn         The neighborhood (scripts/world/world.gd)
 itHappy/             Licensed models, cloned from the private madison-game-art repo (git-ignored; see "Art")
 scripts/
-  avatar/avatar_builder.gd    Avatar config → 3D model (all styling options live here)
+  avatar/avatar_builder.gd    Avatar config → 3D model; the creator's tabs and options; shape avatar
+  avatar/character_parts.gd   The licensed Cute Characters parts, costumes and animations
+  avatar/part_colors.gd       Generated main color of each recolorable part (dev/part_colors.gd)
+  avatar/tint.gdshader        Recolors one color of a part, for hair, clothes and skin colors
   pets/pet_builder.gd         Pet config → 3D model (coats use the licensed animal models)
   pets/pet.gd                 Follow behavior, needs, emotes, walk/run/idle animations
   house/furniture_catalog.gd  Buildable items: footprints, styles (licensed models) and shape fallbacks
@@ -30,7 +33,7 @@ scripts/
   ui/swatch_row.gd            Color swatches plus a rainbow button for any color
   ui/main_menu.gd             Character creator, pet picker, name picker and play buttons
   ui/hud.gd                   In-world UI: player and pet cards, dock, chat, dialogs, build drawer
-  world/scenery.gd            Ground, roads, plaza, trees, bushes and flowers
+  world/scenery.gd            Ground, roads, plaza, trees, bushes, rocks, grass and flowers
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
   util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
@@ -42,15 +45,17 @@ scripts/
 
 Everything a player owns is a small JSON-friendly Dictionary of option indices and hex colors:
 
-- `avatar`: e.g. `{"hair": 5, "hair_color": "e26fb0", "eyes": 3, "top": 2, ...}`
+- `avatar`: e.g. `{"hair": 5, "hair_color": "e26fb0", "face": 3, "top": 2, "top_color": "", ...}`
+  (`""` keeps a part's own colors). Art and shape avatars have different choices, so the creator
+  builds its tabs from `AvatarBuilder.tabs()` and `options(key)`.
 - `pet`: `{"species": 1, "coat": 2, "name": "Mochi", "color": "...", "accent": "...", "collar": "..."}`
 - `house`: list of `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f", "s": 3}` on a 12×12 grid
   (`r` quarter turns, `c` paint color for shape-built items, `s` style for items with models; big
   items like beds and sofas cover two cells)
 - `name_parts`: `{"adjective": 3, "noun": 7, "number": 42}` → "CozyKoala42"
 
-Adding a new hat, hairstyle or furniture piece is one entry in an options list plus a few lines that
-build its shape. Builders also have a `sanitize()` that clamps any config to valid values.
+Adding a hat or hairstyle from the character pack is one entry in a `CharacterParts` list; a new
+furniture piece is one `FurnitureCatalog` entry. Builders also have a `sanitize()` that clamps any config to valid values.
 
 ## UI
 
@@ -86,11 +91,14 @@ stored in the profile by key, are local only, and skip keys that no longer exist
 30 ms and a page of pictures about 2 seconds the first time.
 
 **Character creator.** The tabs come from `AvatarBuilder.tabs()`: a list of
-`{title, icon, view, rows: [{label, key, icon?, view?, colors?}]}`. A row whose key has options becomes
-a picture grid (`AvatarBuilder.options(key)`), a row with `colors` becomes a swatch row, and `height` is
-a slider. `view` (a row's own, else its tab's) sets both the thumbnail angle and where the preview
-camera zooms.
-`AvatarBuilder.face_height(config)` tells the camera where the face is.
+`{title, icon, view, rows: [{label, key, icon?, view?, colors?, original?}]}`. A row whose key has options
+becomes a picture grid (`AvatarBuilder.options(key)`), a row with `colors` becomes a swatch row (with an
+"Original" chip that picks `""` when `original` is set), and `height` is a slider. `view` (a row's own,
+else its tab's) sets both the thumbnail angle and where the preview camera zooms.
+`AvatarBuilder.face_height(config)` tells the camera where the face is, and `view_zoom(view)` backs it off
+for the art avatar's bigger head. Half of an art avatar's height is its head, so the general framing
+rules in `Thumbs` would miss; instead the avatar carries a `thumb_boxes` meta (view to AABB) that says
+where its face, head, torso, legs and feet are, and any model can do the same.
 
 ## Art
 
@@ -98,8 +106,8 @@ The trees, bushes, rocks and grass come from the free KayKit Forest Nature Pack 
 are committed in `assets/kaykit_forest` with the pack's license. Only the files the town uses are kept.
 `Scenery` draws the grass as one `MultiMeshInstance3D` per tuft shape, so 1,500 tufts cost eight draw calls.
 
-The furniture, pets and flowers come from three paid ithappy packs (Bright Furniture, Animals, Cute
-Characters). Their license forbids sharing the raw files, and this repo is public, so they live in the
+The avatars, furniture, pets and flowers come from three paid ithappy packs (Cute Characters, Bright
+Furniture, Animals). Their license forbids sharing the raw files, and this repo is public, so they live in the
 private `AllisonEJohnson/madison-game-art` repo and are cloned into `itHappy/`, which git ignores:
 
 ```sh
@@ -109,9 +117,16 @@ git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
 The pack scenes refer to `res://itHappy/...`, so the folder name matters. Code asks `Art.instance()`
 for a model and falls back to its simple shape version when that returns null, so the game still runs
 without the art (for example in a fork). Every model the game uses is listed in an `art_paths()`
-function (furniture catalog, pet builder, scenery). The web build checks out the art with the
-`ART_REPO_TOKEN` Actions secret, and `scripts/dev/prune_art.gd` deletes everything those lists don't
-need before export, which keeps the download small. A wrong path in a list fails that step.
+function (avatar builder, furniture catalog, pet builder, scenery). The web build checks out the art
+with the `ART_REPO_TOKEN` Actions secret, and `scripts/dev/prune_art.gd` deletes everything those lists
+don't need before export, which keeps the download small. It also drops the character animations the
+game doesn't play. A wrong path in a list fails that step.
+
+An art avatar is the pack's skeleton with one skinned mesh per part (body, face, hair, clothes...).
+The pack paints every part from one palette texture, so colors work by recoloring: `part_colors.gd`
+records each part's main color (generate it with `scripts/dev/part_colors.gd`), and `tint.gdshader`
+swaps that color for the player's pick while leaving stripes and buttons alone. Skin works the same
+way on a single body model, so any skin color is possible.
 
 ## Networking
 

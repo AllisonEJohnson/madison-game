@@ -50,10 +50,13 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
   a Favorites tab (tap the star) and a Recently used tab, with paged picture cards. Only the visible page
   is built and its pictures render in the background (and are cached on disk), so it stays quick with
   the whole 800+ model furniture pack loaded.
-- **Character creator** with live 3D preview: skin tone, height, body shape; 6 eye styles, eye color,
-  5 eyebrow styles, 4 noses, 6 mouths, blush and freckles, 4 glasses styles; 10 hair styles with any color;
-  5 tops, 4 bottoms, 3 shoes, each with its own colors; 9 hats and hair clips; backpacks, capes and wings.
-  Every color has kid-friendly swatches plus a full color picker. "Surprise me" randomizes everything.
+- **Character creator** with live 3D preview, using the Cute Characters models: any skin color,
+  height, 14 expressions with or without eyelashes, ears, 22 glasses, 24 face extras (from clown noses
+  to mustaches), 30 hairstyles, 56 tops, 18 bottoms, 22 shoes and 58 hats (each in any color or its
+  original colors), 9 outfits, socks, gloves, and 14 head-to-toe costumes (astronaut, dino, bee, penguin
+  and more). Characters idle, walk, run and jump. Every color has kid-friendly swatches plus a full color
+  picker, and "Surprise me" randomizes everything. Without the licensed art, the creator falls back to a
+  simpler shape avatar with its own options.
 - **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
   each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
   with, and have fullness and happiness that slowly drop.
