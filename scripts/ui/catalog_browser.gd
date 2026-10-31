@@ -14,6 +14,8 @@ signal favorite_toggled(key: String, on: bool)
 const FAVORITES := "favorites"
 const RECENT := "recent"
 
+## Shows the Favorites and Recent tabs (and stars on cards). Set before setup().
+var personal_tabs := true
 ## key -> true; the caller saves it when favorite_toggled fires.
 var favorites := {}
 ## Keys, newest first.
@@ -102,7 +104,8 @@ func setup(categories: Array, entries: Array, start_category := "") -> void:
 	_rail_buttons.clear()
 	_names = {FAVORITES: "Favorites", RECENT: "Recent"}
 	var tabs := [{"id": FAVORITES, "name": "Favorites", "icon": "glowing_star"},
-		{"id": RECENT, "name": "Recently used", "icon": "alarm_clock"}]
+		{"id": RECENT, "name": "Recently used", "icon": "alarm_clock"}] if personal_tabs else []
+	_grid.favorites = favorites if personal_tabs else null
 	for c in categories:
 		_names[c["id"]] = c["name"]
 	for c in tabs + categories:
@@ -115,6 +118,11 @@ func setup(categories: Array, entries: Array, start_category := "") -> void:
 		rail.add_child(b)
 		_rail_buttons[c["id"]] = b
 	show_category(start_category if _names.has(start_category) else categories[0]["id"])
+
+
+## Draws the current page again, for example after prices or tags change.
+func refresh() -> void:
+	_refresh(true)
 
 
 func set_favorites(favs: Dictionary) -> void:

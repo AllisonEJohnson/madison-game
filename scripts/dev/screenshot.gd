@@ -6,13 +6,18 @@ extends Node
 ## "stress" (fills build mode's catalog with every model in the furniture
 ## pack, to check it copes with hundreds of items), "goto:<x>/<z>/<yaw>[/<pitch>/<distance>]"
 ## (moves you there and turns the camera; the glade starts at x 600), "admin:<command>" (types a
-## command into the admin console, which needs a debug build or --admin); in the menu "tab:<n>",
-## "part:<n>" or "names".
+## command into the admin console, which needs a debug build or --admin), "shop:<home|clothes>",
+## "shopcat:<category id>", "shoppick:<shop key>" (shows one item up close), "build:<id>/<style>"
+## (picks a piece in build mode), "chase" (starts Star Chase), "chasedone:<stars>" (shows the
+## result card), "prompt" (shows the nearby card for the zone you stand in); in the menu "tab:<n>",
+## "part:<n>", "try:<option>/<index>" (tries on a choice) or "names".
+## --shot-wait=<seconds> waits longer before the picture (default 5), for pictures to render.
 
 var path := ""
 var press_actions: Array[String] = []
 var look_down := false # Tilts the camera to see inside the home.
 var ui_steps: Array[String] = []
+var wait := 5.0
 var _t := 0.0
 
 
@@ -34,7 +39,7 @@ func _process(delta: float) -> void:
 			player.set_camera_view(-1.0, 8.0)
 	if _t > 2.5 and not ui_steps.is_empty():
 		_ui_step(ui_steps.pop_front())
-	if _t > 5.0:
+	if _t > wait:
 		get_viewport().get_texture().get_image().save_png(path)
 		print("[screenshot] saved ", path)
 		get_tree().quit()
@@ -79,6 +84,35 @@ func _ui_step(step: String) -> void:
 				if not console[0]._panel.visible:
 					console[0].toggle()
 				console[0]._on_submitted(arg)
+		"shop":
+			hud.open_shop(arg)
+		"shopcat":
+			hud._shop.show_category(arg)
+		"shoppick":
+			hud._shop.pick(arg)
+		"build":
+			var v := arg.split("/")
+			scene._build.select_item(v[0], int(v[1]))
+			scene._show_build_selection()
+		"acorn":
+			# Stands a few steps south of an acorn in the land you're in, facing it.
+			var pickups: AcornPickups = scene._pickups[1 if scene.land_at(scene.local_player.global_position) == "glade" else 0]
+			var spot: Vector3 = pickups.positions()[int(arg) if arg != "" else 0]
+			scene.local_player.teleport(Vector3(spot.x + 1.6, 0.5, spot.z + 3.0))
+			scene.local_player.set_camera_yaw(0.0)
+			scene.local_player.set_camera_view(-0.3, 3.5)
+		"star":
+			# Stands a few steps from the falling star.
+			var star: Vector3 = scene._glade.chase.star_position()
+			scene.local_player.teleport(Vector3(star.x, 0.5, star.z + 5.0))
+			scene.local_player.set_camera_yaw(0.0)
+		"chase":
+			scene._glade.chase.start()
+		"chasedone":
+			hud.show_game_result(int(arg), StarChase.reward_for(int(arg)), true)
+		"try":
+			var v := arg.split("/")
+			scene._on_option_chosen(v[0], int(v[1]))
 		"goto":
 			var v := arg.split("/")
 			scene.local_player.teleport(Vector3(float(v[0]), 0.5, float(v[1])))

@@ -1,9 +1,10 @@
 class_name Hud
 extends CanvasLayer
-## In-world interface: your name card, your pet's card with Feed and Play
-## buttons, a dock of big actions (chat, build, home, help, leave), chat
-## bubbles, and build mode's catalog. Every action also has a key, shown on
-## its button, so the keyboard and the mouse both work.
+## In-world interface: your name card with your wallet, your pet's card with
+## Feed and Play buttons, a dock of big actions (chat, decorate, shop, home,
+## help, leave), chat bubbles, build mode's catalog, the shop, the card that
+## offers a nearby shop or game, and Star Chase's timer. Every action also has
+## a key, shown on its button, so the keyboard and the mouse both work.
 
 signal phrase_chosen(index: int)
 signal entry_chosen(id: String, style: int)
@@ -15,6 +16,12 @@ signal build_toggled
 signal home_pressed
 signal pet_action(feed: bool)
 signal leave_confirmed
+## The button on the "nearby" card (or E) was pressed.
+signal zone_used
+## Shop buttons: place a bought piece, or put on bought clothes.
+signal shop_decorate(id: String, style: int)
+signal shop_wear(option: String, index: int)
+signal chase_again
 
 ## Icons for the preset chat phrases (see SafeNames.CHAT_PHRASES).
 const PHRASE_ICONS := {
@@ -30,7 +37,8 @@ const HELP := [
 	["Right-drag", "eye", "Look around"], ["Wheel", "magnifying_glass_tilted_left", "Zoom in and out"],
 	["F", "meat_on_bone", "Feed your pet"], ["G", "tennis", "Play with your pet"],
 	["T", "speech_balloon", "Say something"], ["B", "couch_and_lamp", "Decorate your home"],
-	["H", "house", "Go to your home"], ["Esc", "door", "Leave"],
+	["H", "house", "Go to your home"], ["E", "shopping_bags", "Use a shop or game nearby"],
+	["Walk", "chestnut", "Pick up acorns to spend"], ["Esc", "door", "Leave"],
 ]
 ## Paints for furniture made from shapes (pieces without model styles).
 const HOUSE_COLORS := ["f1e7d6", "ffffff", "f7d9c4", "ffe8a3", "cdeac0", "bfe0f5", "d9c8f0", "f5c6d6",
@@ -73,7 +81,25 @@ var _look_label: Label
 var _paint: VBoxContainer
 var _palette: SwatchRow
 var _erase: Button
+var _buy_row: HBoxContainer
+var _buy_button: Button
+var _tools: HBoxContainer
 var _entries := {} # key -> entry
+var _shop: ShopPanel
+var _prompt: PanelContainer
+var _prompt_icon: TextureRect
+var _prompt_title: Label
+var _prompt_hint: Label
+var _prompt_button: Button
+var _game_bar: PanelContainer
+var _game_label: Label
+var _game_time: Label
+var _result: PanelContainer
+var _result_stars: Label
+var _result_reward: Label
+var _result_best: Control
+var _gain: Label
+var _gain_tween: Tween
 ## Kept for the smoke test, which prints the chat.
 var _chat_lines: Array[String] = []
 
@@ -101,7 +127,13 @@ func _ready() -> void:
 	_phrases = _build_phrases()
 	_help = _build_help()
 	_leave = _build_leave()
+	_result = _build_result()
+	_build_shop()
+	_build_prompt()
+	_build_game_bar()
 	_build_build_mode()
+	GameState.earned.connect(_on_earned)
+	GameState.owned_changed.connect(_refresh_prices)
 
 
 # --- Cards ---------------------------------------------------------------------
@@ -137,6 +169,19 @@ func _build_player_card() -> void:
 	_member_badge.mouse_filter = Control.MOUSE_FILTER_PASS
 	_member_badge.visible = false
 	wallet.add_child(_member_badge)
+	# "+5" flies up beside the wallet when you earn something.
+	_gain = UiTheme.label("", &"Heading", 20, Color("b8741a"))
+	_gain.add_theme_color_override("font_outline_color", Color.WHITE)
+	_gain.add_theme_constant_override("outline_size", 6)
+	_gain.modulate.a = 0.0
+	wallet.add_child(_gain)
+	# Tapping the wallet opens the shop.
+	wallet.mouse_filter = Control.MOUSE_FILTER_STOP
+	wallet.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	wallet.tooltip_text = "Open the shop"
+	wallet.gui_input.connect(func(event):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			open_shop())
 	set_wallet()
 
 
@@ -206,6 +251,7 @@ func _build_dock() -> void:
 	var actions := [
 		["Chat", "speech_balloon", "T", open_quick_chat],
 		["Decorate", "couch_and_lamp", "B", func(): build_toggled.emit()],
+		["Shop", "shopping_bags", "", func(): open_shop()],
 		["Home", "house", "H", func(): home_pressed.emit()],
 		["Help", "red_question_mark", "", func(): _show_only(_help)],
 		["Leave", "door", "Esc", ask_leave],
@@ -324,6 +370,155 @@ func _build_leave() -> PanelContainer:
 	return box.get_parent()
 
 
+# --- Shop, nearby things and Star Chase ---------------------------------------
+
+func _build_shop() -> void:
+	_shop = _place(ShopPanel.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	_shop.visible = false
+	_shop.closed.connect(func(): _show_only(null))
+	_shop.decorate.connect(func(id, style):
+		_show_only(null)
+		shop_decorate.emit(id, style))
+	_shop.wear.connect(func(option, index): shop_wear.emit(option, index))
+	_shop.stardust_info.connect(func():
+		toast("The Stardust store is coming soon! A grown-up will help you get Stardust there."))
+
+
+## A card above the dock that offers what's nearby, like a shop or a game.
+func _build_prompt() -> void:
+	_prompt = _place(UiTheme.card(), Control.PRESET_CENTER_BOTTOM, Vector2(0, -124))
+	_prompt.add_theme_stylebox_override("panel", UiTheme.card_box(UiTheme.PAPER, 26, 12))
+	_prompt.visible = false
+	var row := UiTheme.hbox(12)
+	_prompt.add_child(row)
+	_prompt_icon = UiTheme.texture_rect(null, 46)
+	row.add_child(_prompt_icon)
+	var words := UiTheme.vbox(0)
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(words)
+	_prompt_title = UiTheme.label("", &"Heading", 22)
+	words.add_child(_prompt_title)
+	_prompt_hint = UiTheme.label("", &"Hint", 15)
+	words.add_child(_prompt_hint)
+	_prompt_button = UiTheme.button("", "", &"PrimaryButton")
+	_prompt_button.custom_minimum_size = Vector2(130, 56)
+	_prompt_button.add_theme_font_size_override("font_size", 22)
+	_prompt_button.add_theme_constant_override("icon_max_width", 30)
+	_prompt_button.pressed.connect(func(): zone_used.emit())
+	UiTheme.add_key_badge(_prompt_button, "E")
+	row.add_child(_prompt_button)
+
+
+## Star Chase's banner: stars caught and time left.
+func _build_game_bar() -> void:
+	_game_bar = _place(UiTheme.card(&"Banner"), Control.PRESET_CENTER_TOP, Vector2(0, 14))
+	_game_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_game_bar.visible = false
+	var row := UiTheme.hbox(14)
+	_game_bar.add_child(row)
+	row.add_child(UiTheme.texture_rect(UiTheme.icon("glowing_star"), 40))
+	_game_label = UiTheme.label("", &"Heading", 26, Color.WHITE)
+	row.add_child(_game_label)
+	row.add_child(UiTheme.texture_rect(UiTheme.icon("stopwatch"), 34))
+	_game_time = UiTheme.label("", &"Heading", 26, Color("ffe066"))
+	_game_time.custom_minimum_size.x = 62
+	row.add_child(_game_time)
+
+
+func _build_result() -> PanelContainer:
+	var box := _dialog("Time's up!", "glowing_star")
+	box.custom_minimum_size.x = 420
+	_result_stars = UiTheme.label("", &"Heading", 30)
+	_result_stars.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_result_stars)
+	var reward := UiTheme.hbox(8)
+	reward.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(reward)
+	reward.add_child(UiTheme.texture_rect(UiTheme.icon("chestnut"), 40))
+	_result_reward = UiTheme.label("", &"Heading", 34, Color("b8741a"))
+	reward.add_child(_result_reward)
+	var best := UiTheme.hbox(8)
+	best.alignment = BoxContainer.ALIGNMENT_CENTER
+	best.add_child(UiTheme.texture_rect(UiTheme.icon("trophy"), 30))
+	best.add_child(UiTheme.label("New best!", &"Heading", 22, UiTheme.PURPLE))
+	box.add_child(best)
+	_result_best = best
+	var bonus := UiTheme.label("Catch %d stars for a bonus of %d Acorns!" % [StarChase.BONUS_AT, StarChase.BONUS],
+			&"Hint", 15)
+	bonus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(bonus)
+	var row := UiTheme.hbox(12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(row)
+	var again := UiTheme.button("Play again", "glowing_star", &"PurpleButton")
+	again.custom_minimum_size = Vector2(180, 56)
+	again.pressed.connect(func():
+		_show_only(null)
+		chase_again.emit())
+	row.add_child(again)
+	var done := UiTheme.button("Done", "check_mark_button", &"PrimaryButton")
+	done.custom_minimum_size = Vector2(150, 56)
+	done.add_theme_font_size_override("font_size", 22)
+	done.pressed.connect(func(): _show_only(null))
+	row.add_child(done)
+	return box.get_parent()
+
+
+## Opens the shop on a section ("home" or "clothes"; the last one by default).
+## The list is rebuilt each time, so the clothes pictures show you as you are now.
+func open_shop(section := "") -> void:
+	if section == "":
+		section = _shop.current_section() if _shop.current_section() != "" else "home"
+	_shop.show_section(section)
+	if not _shop.visible:
+		_show_only(_shop)
+
+
+func shop_open() -> bool:
+	return _shop.visible
+
+
+## Shows what a nearby zone offers, or hides the card for null.
+func show_prompt(zone: InteractZone) -> void:
+	_prompt.visible = zone != null and not _build_bar.visible
+	if zone == null:
+		return
+	_prompt_icon.texture = UiTheme.icon(zone.icon)
+	_prompt_title.text = zone.title
+	_prompt_hint.text = zone.hint
+	_prompt_button.text = zone.button_text
+	_prompt.reset_size()
+
+
+func show_game(countdown: float, caught: int, time_left: float) -> void:
+	_game_bar.visible = true
+	if countdown > 0.0:
+		_game_label.text = "Get ready... %d" % ceili(countdown)
+		_game_time.text = ""
+	else:
+		_game_label.text = "%d star%s" % [caught, "" if caught == 1 else "s"]
+		_game_time.text = "%d" % ceili(time_left)
+	_game_bar.reset_size()
+
+
+func show_game_result(caught: int, reward: int, new_best: bool) -> void:
+	_game_bar.visible = false
+	_result_stars.text = "You caught %d star%s!" % [caught, "" if caught == 1 else "s"]
+	_result_reward.text = "+%d" % reward
+	_result_best.visible = new_best and caught > 0
+	_show_only(_result)
+
+
+func _on_earned(_currency: String, amount: int) -> void:
+	_gain.text = "+%d" % amount
+	if _gain_tween:
+		_gain_tween.kill()
+	_gain.modulate.a = 1.0
+	_gain_tween = create_tween()
+	_gain_tween.tween_interval(0.9)
+	_gain_tween.tween_property(_gain, "modulate:a", 0.0, 0.6)
+
+
 # --- Build mode -------------------------------------------------------------------
 
 func _build_build_mode() -> void:
@@ -369,6 +564,8 @@ func _build_build_mode() -> void:
 		var style: int = e["style"]
 		var key: String = e["key"]
 		e["thumb"] = func(): return _item_thumb(id, style)
+		e["shop_key"] = ShopCatalog.furniture_key(id, style)
+		e["tag"] = BuyCard.price_tag(e["shop_key"])
 		e["tooltip"] = e["name"] if FurnitureCatalog.style_count(id) <= 1 or not FurnitureCatalog.has_art(id) \
 				else "%s, look %d of %d" % [e["name"], style + 1, FurnitureCatalog.style_count(id)]
 		_entries[key] = e
@@ -430,7 +627,23 @@ func _build_pick_panel() -> Control:
 	_paint.add_child(_palette)
 	side.add_child(UiTheme.spacer())
 
+	# Shown instead of the tools for a look you haven't bought yet.
+	_buy_row = UiTheme.hbox(8)
+	_buy_row.visible = false
+	side.add_child(_buy_row)
+	_buy_button = UiTheme.button("Buy", "chestnut", &"PrimaryButton", "Buy this look")
+	_buy_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_buy_button.custom_minimum_size.y = 54
+	_buy_button.add_theme_font_size_override("font_size", 22)
+	_buy_button.add_theme_constant_override("icon_max_width", 28)
+	_buy_button.pressed.connect(_buy_picked)
+	_buy_row.add_child(_buy_button)
+	var done_buying := UiTheme.icon_button("check_mark_button", "Stop decorating (B)", 54)
+	done_buying.pressed.connect(func(): build_toggled.emit())
+	_buy_row.add_child(done_buying)
+
 	var tools := UiTheme.hbox(8)
+	_tools = tools
 	side.add_child(tools)
 	var turn := UiTheme.icon_button("counterclockwise_arrows_button", "Turn it", 54, "R")
 	turn.pressed.connect(func(): rotate_pressed.emit())
@@ -481,9 +694,66 @@ func _tuck(on: bool) -> void:
 
 
 func _item_thumb(id: String, style: int) -> Texture2D:
-	var art := FurnitureCatalog.has_art(id)
-	var key := "furniture:%s:%d:%s" % [id, style, FurnitureCatalog.style_path(id, style) if art else "shape"]
-	return Thumbs.texture(key, func(): return FurnitureCatalog.build(id, "", false, style), "item", art)
+	return ShopPanel.furniture_thumb(id, style)
+
+
+## Price tags change when something is bought.
+func _refresh_prices() -> void:
+	for key in _entries:
+		var e: Dictionary = _entries[key]
+		e["tag"] = BuyCard.price_tag(e["shop_key"])
+	_browser.refresh()
+	if _build_bar.visible:
+		_show_buy(_pick_key())
+
+
+## The shop key of the look picked in the build catalog.
+func _pick_key() -> String:
+	return _browser.get_meta("pick_key", "")
+
+
+func _show_buy(shop_key: String) -> void:
+	var price := ShopCatalog.price(shop_key)
+	var owned := shop_key == "" or GameState.owns(shop_key)
+	_buy_row.visible = not owned
+	_tools.visible = owned
+	if owned:
+		return
+	_buy_button.text = "Buy  %s" % ShopCatalog.amount_text(price)
+	_buy_button.icon = UiTheme.icon(ShopCatalog.currency_icon(price["currency"]))
+	_buy_button.theme_type_variation = &"PurpleButton" if price["currency"] == ShopCatalog.STARDUST else &"PrimaryButton"
+	_buy_button.disabled = not GameState.can_afford(shop_key)
+	_buy_button.tooltip_text = "Buy this look" if GameState.can_afford(shop_key) \
+			else "You need more %s" % ShopCatalog.currency_name(price["currency"])
+
+
+## Buys the look picked in build mode. Stardust looks open the shop instead,
+## where spending it takes a second tap.
+func _buy_picked() -> void:
+	var shop_key := _pick_key()
+	var price := ShopCatalog.price(shop_key)
+	if price.is_empty():
+		return
+	if price["currency"] == ShopCatalog.STARDUST:
+		_shop.show_section("home")
+		_show_only(_shop)
+		_shop.pick(shop_key)
+		return
+	if GameState.buy(shop_key):
+		toast("It's yours! Click your home to place it.")
+
+
+## Called when placing something not bought yet.
+func need_purchase(id: String, style: int) -> void:
+	var shop_key := ShopCatalog.furniture_key(id, style if FurnitureCatalog.has_art(id) else 0)
+	var price := ShopCatalog.price(shop_key)
+	if price.is_empty():
+		return
+	if GameState.can_afford(shop_key):
+		toast("Tap Buy to get this look first!")
+	else:
+		toast("This look costs %s %s. Find more acorns to get it!" % [ShopCatalog.amount_text(price),
+				ShopCatalog.currency_name(price["currency"])])
 
 
 func _on_entry_chosen(key: String) -> void:
@@ -512,9 +782,13 @@ func _place(control: Control, preset: int, offset: Vector2) -> Control:
 
 ## Shows one centered card and hides the others (or hides all for null).
 func _show_only(card: Control) -> void:
-	for c in [_phrases, _help, _leave]:
+	for c in _cards():
 		c.visible = c == card and not c.visible
-	_scrim.visible = _phrases.visible or _help.visible or _leave.visible
+	_scrim.visible = _cards().any(func(c): return c.visible)
+
+
+func _cards() -> Array:
+	return [_phrases, _help, _leave, _result, _shop]
 
 
 func _process(delta: float) -> void:
@@ -625,7 +899,7 @@ func ask_leave() -> void:
 
 ## Closes whichever centered card is open. Returns false when none was.
 func close_popups() -> bool:
-	var any := _phrases.visible or _help.visible or _leave.visible
+	var any := _cards().any(func(c): return c.visible)
 	_show_only(null)
 	return any
 
@@ -635,6 +909,8 @@ func show_build(active: bool) -> void:
 	_tuck(_tucked)
 	for card in [_dock, _pet_card, _player_card, _chat_box]:
 		card.visible = not active
+	if active:
+		_prompt.visible = false
 	_erase.set_pressed_no_signal(false)
 	if active:
 		_browser.set_recent(GameState.profile.get("recent", []))
@@ -647,6 +923,9 @@ func refresh_recent() -> void:
 func set_build_selection(id: String, color: Color, style := 0, erasing := false) -> void:
 	var key := "%s:%d" % [id, style if FurnitureCatalog.has_art(id) else 0]
 	_browser.select(key)
+	var shop_key := ShopCatalog.furniture_key(id, style if FurnitureCatalog.has_art(id) else 0)
+	_browser.set_meta("pick_key", shop_key)
+	_show_buy(shop_key)
 	_erase.set_pressed_no_signal(erasing)
 	_pick_name.text = FurnitureCatalog.ITEMS[id]["name"]
 	_pick_pic.texture = _item_thumb(id, style if FurnitureCatalog.has_art(id) else 0)
