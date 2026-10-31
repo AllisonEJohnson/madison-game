@@ -8,6 +8,9 @@ const PET_COLORS := ["e8a35a", "c49a6c", "8d5b3a", "fff3e0", "ffffff", "8a8a8a",
 		"e04848", "eb5f9a", "9b51e0", "3f7fd9", "56ccf2", "6fcf97", "2fa37a", "f2994a"]
 ## How far the camera sits from what it looks at, per view.
 const CAMERA_DISTANCE := {"face": 2.6, "head": 3.2, "body": 4.8, "pet": 3.4}
+## Picture card sizes for choices, biggest first; long lists get smaller cards
+## so there are fewer pages to flip through.
+const CARD_SIZES := [Vector2(122, 140), Vector2(96, 124), Vector2(96, 104)]
 
 var _profile: Dictionary
 var _preview_root: Node3D
@@ -532,7 +535,7 @@ func _show_part(j: int) -> void:
 func _add_option_grid(part: Dictionary) -> void:
 	var key: String = part["key"]
 	var view: String = part["view"]
-	_option_grid = _new_grid(Vector2(122, 140))
+	_option_grid = _new_grid(CARD_SIZES)
 	_option_grid.show_names = true
 	_option_grid.select(str(int(_profile["avatar"].get(key, 0))))
 	_option_grid.set_items(_option_items(key, view))
@@ -581,11 +584,32 @@ func _add_color_row(row: Dictionary, is_pet := false) -> void:
 			_set_pet(row["key"], hex)
 		else:
 			_set_avatar(row["key"], hex))
+	_fit_swatches(palette)
 	_content.add_child(palette)
 
 
+## Shrinks a long row of swatches to fit one line where it can, which leaves
+## the picture grid above room for a second row of cards.
+func _fit_swatches(palette: SwatchRow) -> void:
+	var width := _content.size.x if _content.size.x > 0.0 else 520.0
+	var count := palette.get_child_count()
+	var natural := float((count - 1) * palette.get_theme_constant("h_separation"))
+	for swatch in palette.get_children():
+		natural += swatch.custom_minimum_size.x
+	if natural <= width:
+		return
+	var gap := 5
+	var side := clampi(floori((width + gap) / count) - gap, 28, SwatchRow.SWATCH)
+	palette.add_theme_constant_override("h_separation", gap)
+	palette.add_theme_constant_override("v_separation", gap)
+	for swatch in palette.get_children():
+		swatch.custom_minimum_size = Vector2(swatch.custom_minimum_size.x if swatch.text != "" else side, side)
+		if swatch.icon:
+			swatch.add_theme_constant_override("icon_max_width", side - 10)
+
+
 func _add_pet_species() -> void:
-	var grid := _new_grid(Vector2(112, 130))
+	var grid := _new_grid([Vector2(112, 130)])
 	grid.show_names = true
 	var pet: Dictionary = _profile["pet"]
 	var items := []
@@ -600,7 +624,7 @@ func _add_pet_species() -> void:
 
 
 func _add_pet_names() -> void:
-	var grid := _new_grid(Vector2(116, 52))
+	var grid := _new_grid([Vector2(116, 52)])
 	var items := []
 	for pet_name in SafeNames.PET_NAMES:
 		items.append({"key": pet_name, "name": pet_name})
@@ -617,7 +641,7 @@ func _add_pet_looks() -> void:
 			_add_color_row({"label": row[0], "key": row[1], "colors": PET_COLORS}, true)
 		_content.add_child(UiTheme.spacer())
 		return
-	var grid := _new_grid(Vector2(112, 130))
+	var grid := _new_grid(CARD_SIZES)
 	grid.show_names = true
 	var names := PetBuilder.coat_names(pet)
 	var items := []
@@ -634,9 +658,10 @@ func _pet_thumb(config: Dictionary) -> Texture2D:
 	return Thumbs.texture("pet:" + JSON.stringify(config), func(): return PetBuilder.build(config), "pet", cache)
 
 
-func _new_grid(card_size: Vector2) -> ItemGrid:
+func _new_grid(card_sizes: Array) -> ItemGrid:
 	var grid := ItemGrid.new()
-	grid.card_size = card_size
+	grid.card_size = card_sizes[0]
+	grid.card_sizes = card_sizes
 	_content.add_child(grid)
 	return grid
 
