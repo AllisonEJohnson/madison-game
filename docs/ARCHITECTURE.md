@@ -5,7 +5,8 @@
 ```
 autoload/
   game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents, wallet,
-                     things bought and membership) saved to user://profile.json; input map
+                     things bought, membership and level) saved to user://profile.json; input map
+  progress.gd        The player's level: XP from playing, level-up rewards, locked places, Star Boost
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
   thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
 assets/
@@ -29,6 +30,7 @@ scripts/
   player/player.gd            Movement, camera, animation, network sync
   ui/ui_theme.gd              The shared look: palette, fonts, Theme, and button/card/label helpers
   shop/shop_catalog.gd        Prices: what each look of furniture and each piece of clothing costs, and in which currency
+  progress/levels.gd          Level rules: the XP curve, what playing is worth, and what each level brings
   ui/item_grid.gd             Paged grid of picture cards with favorite stars and price tags
   ui/catalog_browser.gd       Category rail + group chips + search + Favorites/Recent around an ItemGrid
   ui/swatch_row.gd            Color swatches plus a rainbow button for any color
@@ -37,10 +39,14 @@ scripts/
                               shop, the "press E" prompt and Star Chase's banner and result
   ui/shop_panel.gd            The shop window: Home and Clothes sections around a CatalogBrowser
   ui/buy_card.gd              One item up close with its price and a Buy button (shop and creator)
-  ui/admin_console.gd         Maker-only command box (` key) that grants currency and membership
+  ui/level_badge.gd           The star and XP bar on the player card
+  ui/level_card.gd            Your level up close: progress, what's coming, ways to earn XP, Star Boost
+  ui/level_up_card.gd         The level-up celebration, with confetti
+  ui/admin_console.gd         Maker-only command box (` key) that grants currency, membership and XP
   world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
   world/fantasy_land.gd       Starfall Glade, the fantasy land
-  world/portal.gd             Walk-in portal between lands
+  world/portal.gd             Walk-in portal between lands (locked until a level when its place needs one)
+  world/sky_garden.gd         The Sky Garden, a floating island above Starfall Glade that opens at level 5
   world/acorn_pickups.gd      Acorns to pick up around a land, the simplest way to earn
   world/star_chase.gd         Star Chase, the catch-the-falling-stars game in Starfall Glade
   world/interact_zone.gd      A spot that offers something to do ("Press E") when you stand in it
@@ -151,6 +157,11 @@ land's look (`Lighting.LANDS`) and hides the other land so it costs nothing to d
 so remote players and pets there still stand on solid ground. More lands can be added the same way at
 other offsets.
 
+The **Sky Garden** is a flower-covered island floating 36 m above the glade's east side
+(`World.SKY_GARDEN`), part of the glade's scene so it shows and hides with it. Its portal stands at the
+castle door, where the glade's north path ends, and opens at level 5. Golden acorns grow there four times
+as often as elsewhere. A fence and an invisible wall around the edge keep players from falling off.
+
 The Fantasy pack's own water shader reads the depth buffer, which browsers handle poorly, so the glade's
 pond uses a small shader of its own.
 
@@ -197,6 +208,45 @@ check catches before paying.
 there shows "Press E" and opens `ShopPanel`, which also opens from the dock's Shop button or a click on
 the wallet. Bought clothes are worn through `World.submit_avatar`, so everyone sees the new look. Things
 that cost Stardust ask "Spend N Stardust?" before buying, so a stray tap can't spend real money.
+
+## Levels and XP
+
+There is one player level (no skill tracks). `Levels` (scripts/progress/levels.gd) holds the rules as
+data, and the `Progress` autoload keeps the player's XP in `GameState.profile` and hands out rewards.
+
+**XP.** Level 2 takes 50 XP and each level after that 25 more than the last (level 10 is 1,350 XP in all;
+the top level is 50). Playing pays XP through `Progress.award(source)`, called from the same spots that pay
+Acorns: an acorn 3 (golden 10), a Star Chase star 2, feeding or playing with your pet 4 (once a minute
+each), putting something in your home 2 (20 times a day), the first visit to a new place 40, and the first
+visit each day 25. Each source is one line in `Levels.SOURCES`, with an optional `cooldown` (seconds) or
+`daily` cap; daily counts are saved with the date, cooldowns are not.
+
+**Rewards.** Every new level pays `20 + 5 × level` Acorns, and many also bring something
+(`Levels.rewards(level)`): a place (`Levels.AREAS`: Starfall Glade at 2, the Sky Garden at 5), new kinds of
+things in the shop, or a gift from the shop (`Levels.GIFTS`, such as the Bunny costume at 5). Rewards are
+given once: `rewarded_level` remembers the highest level paid, so going down a level (admin console) and
+back up pays nothing twice. Reaching several levels at once shows one card with everything.
+
+**Gated shop items.** A rule in `ShopCatalog.FURNITURE` or `CLOTHES` can have a `level`: its Acorn looks
+can't be bought before then (sofas and hats at 2, costumes at 8, arcade machines at 9).
+`ShopCatalog.level_needed(key)` returns it, `GameState.buy()` refuses earlier purchases, and price tags,
+`BuyCard` and build mode show a padlock with the level instead of Buy. Stardust looks never need a level,
+because premium is for getting ahead faster; it never buys levels or random prizes.
+
+**Places.** A portal to a place that needs a higher level shows a padlock and "Opens at level N", and a
+thin wall in its ring stops you; walking into it explains how to level up. Locks depend on the local
+player's level, so each player sees their own.
+
+**Star Boost.** 30 Stardust doubles XP for 30 minutes (buying more adds time, up to 4 hours). It's sold
+from the level card with the same "tap again to be sure" as other Stardust purchases.
+
+**On screen.** The player card shows a star with the level and an XP bar that fills as you play, with a
+"+3 XP" over it. Tapping it opens the level card: progress, the next three levels that bring something,
+the ways to earn XP and the Star Boost. A level-up shows a celebration card with confetti, as soon as no
+other window is open and no Star Chase game is running.
+
+Like the wallet, XP lives in the device's save for now; a game server should award XP and level rewards
+before levels unlock anything bought with real money.
 
 ## Networking
 
@@ -245,4 +295,4 @@ same spawn and RPC code runs solo. Online play in the browser would need `WebSoc
 2. Change outfits in-world (wardrobe in your house), and visiting other homes with permissions.
 3. Pet tricks, pet beds that pets actually use, more species.
 4. Real art: swap the primitive builders for imported `.glb` models, keeping the same config format.
-5. More ways to earn: more mini-games, daily tasks and levels.
+5. More ways to earn: more mini-games and daily tasks.

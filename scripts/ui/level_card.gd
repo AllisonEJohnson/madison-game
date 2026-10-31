@@ -99,8 +99,13 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	Progress.xp_changed.connect(func(_gained): refresh())
-	GameState.wallet_changed.connect(refresh)
+	# Only kept up to date while open; opening it refreshes it.
+	Progress.xp_changed.connect(func(_gained):
+		if visible:
+			refresh())
+	GameState.wallet_changed.connect(func():
+		if visible:
+			refresh())
 	visibility_changed.connect(func():
 		_confirm_time = 0.0
 		refresh())
@@ -121,7 +126,7 @@ func refresh() -> void:
 		_bar_text.text = "%d / %d XP" % [p["into"], p["need"]]
 		_to_go.text = "%d more XP to reach level %d!" % [int(p["need"]) - int(p["into"]), level + 1]
 	for child in _coming.get_children():
-		child.queue_free()
+		child.free()
 	var upcoming := Levels.upcoming(level, 3)
 	if upcoming.is_empty():
 		_coming.add_child(UiTheme.label("Every level still gives you Acorns!", &"Hint", 16))

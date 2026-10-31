@@ -43,12 +43,16 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | Shop button | Open the shop (or click your wallet) |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
 
-Walk into the glowing portal west of the plaza to visit **Starfall Glade**, and through its portal to come back.
+Walk into the glowing portal west of the plaza to visit **Starfall Glade** (it opens at level 2), and through
+its portal to come back. Tap the star on your player card to see your level and what's next.
 
 **Admin console** (for the game's makers): press <kbd>`</kbd> (left of 1) to open it. It only exists when
 running from the editor or with `godot --path . -- --admin`. `stardust 500` grants premium currency,
 `acorns 500` grants earned currency, `member 30` adds 30 days of membership, `unlock all` owns everything in
-the shop (`unlock reset` takes it back, except what you wear or have placed), `wallet` shows balances and `help` lists commands. Amounts can be negative to take currency away. It changes this device's save only.
+the shop (`unlock reset` takes it back, except what you wear or have placed), `wallet` shows balances,
+`xp 100` gives XP, `level 5` jumps to a level (`level` alone shows it, `level reset` starts over as a new
+player), `boost 30` gives a 30-minute Star Boost, and `help` lists commands. Amounts can be negative to take
+currency or XP away. It changes this device's save only.
 
 ## What's in the prototype
 
@@ -81,6 +85,10 @@ the shop (`unlock reset` takes it back, except what you wear or have placed), `w
   with a few special ones for Stardust, the premium currency. Prices show on every catalog card, in build
   mode and in the creator, where you can try anything on first. The starter home, the default character
   and the first look of most pieces stay free, and everything already in an older save stays owned.
+- **Levels**: XP for picking up acorns, Star Chase, pet care, decorating, exploring and coming back each
+  day fills the bar on your player card. Each level pays Acorns, and many open something: Starfall Glade at
+  level 2, the **Sky Garden** (a floating flower island above the glade) at level 5, new kinds of things in
+  the shop, or a gift like the Bunny costume. A Star Boost (Stardust) doubles XP for 30 minutes.
 - **Wallet**: Acorns (earned) and Stardust (premium) balances and membership, shown on the player card.
   Stardust can't be bought yet; the admin console grants it for testing.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
@@ -113,6 +121,9 @@ python3 -m http.server -d build/web 8000   # then open http://localhost:8000
 ```sh
 # Headless check of prices, buying, acorns, Star Chase and the shop (exit code = failures)
 godot --headless --path . -- --host --economy-test
+
+# Headless check of XP, level-ups, level-locked shop items and portals, and the Star Boost
+godot --headless --path . -- --host --levels-test
 
 # Two-process multiplayer smoke test (prints what each peer sees)
 godot --headless --path . -- --host --smoke-test &
