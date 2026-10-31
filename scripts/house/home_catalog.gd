@@ -8,9 +8,14 @@ extends RefCounted
 ## growing toward the street. Walls go around every room. Where two rooms meet,
 ## the wall gets a doorway at the "link" edge (or in the middle of the shared
 ## wall when neither room names one). A "deck" is an open-air room: a floor with
-## railings instead of walls, and "gaps" in the railing to walk through. A
-## "tent" gets a ridge pole and canvas ends above its walls. An edge is
-## [x, z, side], side being n, w, s or e of that cell.
+## railings instead of walls, and "gaps" in the railing for a gate. A "tent"
+## gets a ridge pole and canvas ends above its walls. An edge is [x, z, side],
+## side being n, w, s or e of that cell.
+##
+## In town you only see a home from outside. Its front doors (a room's "door"
+## that opens onto the yard) and its gates are entrances: walking into one takes
+## you inside, to a space of its own (see House), and walking into it from
+## inside takes you back out.
 ##
 ## Rooms with a "price" are add-ons, bought one by one; the rest come with the
 ## home. Prices are {"acorns": n, "level": l} (Acorns, once you reach level l)
@@ -39,7 +44,7 @@ const HOMES := {
 	"sprout_cottage": {
 		"name": "Sprout Cottage", "icon": "house_with_garden",
 		"about": "A cozy cottage with a sunny front porch. Everyone starts here.",
-		"wall": "f1e7d6", "trim": "e07a5f", "floor": "c9a77c", "deck": "d8b98a", "path": "b8b2a7",
+		"wall": "f1e7d6", "trim": "e07a5f", "roof": "c8553d", "floor": "c9a77c", "deck": "d8b98a", "path": "b8b2a7",
 		"height": 2.6, "capacity": 40,
 		"rooms": [
 			{"id": "main", "name": "Main Room", "rect": [3, 3, 6, 6], "door": [5, 8, "s"],
@@ -61,7 +66,7 @@ const HOMES := {
 	"oak_lookout": {
 		"name": "Oak Lookout", "icon": "deciduous_tree",
 		"about": "A log cabin under a giant oak, with a deck up by its branches.",
-		"wall": "c58f5c", "trim": "4f8a3c", "floor": "a47548", "deck": "b98c5c", "path": "a89f8f",
+		"wall": "c58f5c", "trim": "4f8a3c", "roof": "5e8f45", "floor": "a47548", "deck": "b98c5c", "path": "a89f8f",
 		"height": 2.6, "capacity": 45, "price": {"acorns": 1500, "level": 6},
 		"rooms": [
 			{"id": "den", "name": "Den", "rect": [1, 4, 6, 5], "door": [4, 8, "s"],
@@ -90,7 +95,7 @@ const HOMES := {
 	"safari_camp": {
 		"name": "Sunpatch Safari Camp", "icon": "camping",
 		"about": "Canvas tents around a crackling campfire, with a platform for spotting animals.",
-		"wall": "ecdcb4", "trim": "d9822b", "floor": "d8c49a", "deck": "b48a5c", "path": "d6c08f",
+		"wall": "ecdcb4", "trim": "d9822b", "roof": "d9c49a", "floor": "d8c49a", "deck": "b48a5c", "path": "d6c08f",
 		"height": 2.1, "capacity": 45, "price": {"acorns": 2500, "level": 9},
 		"rooms": [
 			{"id": "big_tent", "name": "Big Tent", "rect": [1, 5, 4, 4], "door": [4, 6, "e"], "tent": true,
@@ -120,7 +125,7 @@ const HOMES := {
 	"toadstool_hollow": {
 		"name": "Toadstool Hollow", "icon": "mushroom",
 		"about": "A magical hideaway among giant mushrooms and glowing lamps.",
-		"wall": "e9d8f4", "trim": "e2504c", "floor": "a5c983", "deck": "b9d98f", "path": "c9bfdf",
+		"wall": "e9d8f4", "trim": "e2504c", "roof": "e2504c", "roof_spots": true, "floor": "a5c983", "deck": "b9d98f", "path": "c9bfdf",
 		"height": 2.6, "capacity": 50, "price": {"stardust": 120},
 		"rooms": [
 			{"id": "cap_room", "name": "Cap Room", "rect": [2, 4, 6, 5], "door": [4, 8, "s"],
@@ -341,9 +346,12 @@ static func clean_items(type: String, items: Variant) -> Array:
 # --- The plan: floors, walls and railings ---------------------------------------------
 
 ## Everything the builder draws for a home with these add-ons built:
-## {"floors": [{rect, color, deck, id}], "edges": [{key, x, z, side, kind}],
+## {"floors": [{rect, color, deck, id}], "edges": [{key, x, z, side, kind, room, entrance, outside}],
 ##  "walk": [[x, z]], "decor": [...]}. Edge kinds are "wall", "window",
-## "door" (an open doorway) and "rail"; each edge appears once.
+## "door", "rail" and "gate"; each edge appears once, seen from the room on its
+## (x, z) cell, facing `side`. A door between two rooms is an open doorway; a
+## door or gate onto the yard is an `entrance`. `outside` edges can be seen
+## from town (the far side is the yard or a deck).
 static func plan(type: String, addon_ids: Array) -> Dictionary:
 	var home := info(type)
 	var rooms := built_rooms(type, addon_ids)
@@ -378,8 +386,8 @@ static func plan(type: String, addon_ids: Array) -> Dictionary:
 				var kind := ""
 				if deck:
 					# Railings only toward the open yard; rooms draw their own walls.
-					if other.is_empty() and not (key in gaps):
-						kind = "rail"
+					if other.is_empty():
+						kind = "gate" if key in gaps else "rail"
 				elif other.is_empty() or other.get("deck", false):
 					kind = "door" if key in doors or openings.has(key) else ("window" if key in windows else "wall")
 				else:
@@ -390,13 +398,31 @@ static func plan(type: String, addon_ids: Array) -> Dictionary:
 					list.append(key)
 					shared["|".join(pair)] = list
 				if kind != "":
-					edges[key] = {"key": key, "x": cell.x, "z": cell.y, "side": side, "kind": kind}
+					edges[key] = {"key": key, "x": cell.x, "z": cell.y, "side": side, "kind": kind, "room": r["id"],
+						"entrance": other.is_empty() and kind in ["door", "gate"],
+						"outside": other.is_empty() or other.get("deck", false)}
 	# Two rooms that touch without a link get a doorway in the middle of their wall.
 	for pair in shared:
 		var list: Array = shared[pair]
 		if not list.any(func(k): return edges[k]["kind"] == "door"):
 			edges[list[list.size() / 2]]["kind"] = "door"
 	return {"floors": floors, "edges": edges.values(), "walk": home.get("walk", []), "decor": home.get("decor", [])}
+
+
+## The ways in and out of a home with these add-ons built, main one first:
+## [{x, z, side, kind}], each on its room's cell and facing the yard.
+static func entrances(type: String, addon_ids: Array) -> Array:
+	return plan(type, addon_ids)["edges"].filter(func(e): return e["entrance"])
+
+
+## Every cell inside a room (walled or deck) with these add-ons built:
+## Vector2i -> room id. Furniture only goes on these.
+static func room_cells_built(type: String, addon_ids: Array) -> Dictionary:
+	var out := {}
+	for r in built_rooms(type, addon_ids):
+		for cell in room_cells(r):
+			out[cell] = r["id"]
+	return out
 
 
 static func room_cells(r: Dictionary) -> Array[Vector2i]:

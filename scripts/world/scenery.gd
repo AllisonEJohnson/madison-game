@@ -65,7 +65,7 @@ static func build(ground: Node3D) -> void:
 	# Roads in front of each row of plots, and one through the plaza.
 	var road := Color("c2b08a")
 	for z in [-15.5, 15.5]:
-		MeshUtil.box(ground, Vector3(74, 0.02, 3.5), road, Vector3(0, 0.01, z))
+		MeshUtil.box(ground, Vector3(106, 0.02, 3.5), road, Vector3(0, 0.01, z))
 	MeshUtil.box(ground, Vector3(3.5, 0.02, 31), road, Vector3(0, 0.01, 0))
 	# A short path west from the plaza to the portal.
 	MeshUtil.box(ground, Vector3(absf(GLADE_PORTAL.x) - 6, 0.02, 3.5), road, Vector3((GLADE_PORTAL.x - 6) / 2, 0.01, 0))
@@ -148,9 +148,10 @@ static func acorn_spots(count: int) -> Array[Vector3]:
 static func _open_spot(rng: RandomNumberGenerator, plaza_gap: float) -> Vector3:
 	while true:
 		var p := Vector3(rng.randf_range(-66, 66), 0, rng.randf_range(-66, 66))
-		var in_plots := absf(p.x) < 40.0 and absf(p.z) > 11.0 and absf(p.z) < 34.0
+		# The plots are 22 m lots, four on each side of the plaza (see World.plot_center).
+		var in_plots := absf(p.x) < 53.0 and absf(p.z) > 11.0 and absf(p.z) < 42.0
 		var near_center := absf(p.x) < plaza_gap and absf(p.z) < plaza_gap
-		var on_road := absf(p.x) < 40.0 and absf(absf(p.z) - 15.5) < 3.0 or absf(p.x) < 2.5 and absf(p.z) < 16.0 \
+		var on_road := absf(p.x) < 54.0 and absf(absf(p.z) - 15.5) < 3.0 or absf(p.x) < 2.5 and absf(p.z) < 16.0 \
 				or p.x < 0.0 and p.x > GLADE_PORTAL.x - 6.0 and absf(p.z) < 6.0
 		if not (in_plots or near_center or on_road):
 			return p

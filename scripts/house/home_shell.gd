@@ -1,22 +1,31 @@
 class_name HomeShell
 extends RefCounted
-## Draws a home from its plan (see HomeCatalog.plan): floors, walls with
-## windows and doorways, deck railings, the front walk and the decor around it.
-## Walls stand on the line between two cells, and each straight run of plain
-## wall is one piece, so even a big home costs few draw calls. Like the rest of
-## the house code it must not use the autoloads (see HomeCatalog).
+## Draws a home from its plan (see HomeCatalog.plan), two ways: the inside
+## (`build`: floors, walls with windows and doorways, no roof, for the space you
+## walk into) and the outside (`exterior`: closed walls, roofs, front doors and
+## no furniture, for town). Both have the deck railings, the front walk and the
+## decor around the home. Walls stand on the line between two cells, and each
+## straight run of plain wall is one piece, so even a big home costs few draw
+## calls. Like the rest of the house code it must not use the autoloads (see
+## HomeCatalog).
 
 const WALL := 0.12
 ## The colored cap along the top of every wall: height and depth.
 const CAP := Vector2(0.1, 0.18)
 const RAIL_HEIGHT := 0.8
 const GLASS := Color(0.7, 0.88, 1.0, 0.35)
+## Windows seen from outside, where the empty inside shouldn't show through.
+const GLASS_OUTSIDE := Color("a9d4ee")
+const DOOR := Color("9a6232")
+const KNOB := Color("f2c94c")
 const HIGHLIGHT := Color("ffd166")
 const HALF := HomeCatalog.PLOT / 2.0
 
 
-## The home with these add-ons built. `solid` adds colliders and lights (off
-## for pictures); the floor of room `highlight` is drawn in a bright color.
+## The inside of the home with these add-ons built: rooms without roofs, open
+## doorways between them, and its entrances shut (walking into one goes back
+## out). `solid` adds colliders and lights (off for pictures); the floor of room
+## `highlight` is drawn in a bright color.
 static func build(type: String, addon_ids: Array, solid := true, highlight := "") -> Node3D:
 	var home := HomeCatalog.info(type)
 	var root := Node3D.new()
@@ -28,18 +37,69 @@ static func build(type: String, addon_ids: Array, solid := true, highlight := ""
 	for f in p["floors"]:
 		var rect: Array = f["rect"]
 		var color := HIGHLIGHT if f["id"] == highlight else MeshUtil.hex(f["color"])
-		var floor_h := FurnitureCatalog.FLOOR_H
-		MeshUtil.box(root, Vector3(rect[2], floor_h, rect[3]), color,
-				Vector3(rect[0] + rect[2] / 2.0 - HALF, floor_h / 2.0, rect[1] + rect[3] / 2.0 - HALF))
-		if f["deck"]:
-			_planks(root, rect, color.darkened(0.12))
+		_floor(root, rect, color, f["deck"])
 		if f["tent"]:
 			_tent_top(root, rect, wall.darkened(0.06), trim, height)
-	for cell in p["walk"]:
+	_walk(root, home, p["walk"])
+	_edges(root, type, p["edges"], solid, false)
+	for d in p["decor"]:
+		root.add_child(decor(d, solid))
+	return root
+
+
+## The home as town sees it: closed walls, a roof over every room (canvas for
+## tents), shut doors and windows, empty decks. Nothing inside is drawn.
+static func exterior(type: String, addon_ids: Array, solid := true) -> Node3D:
+	var home := HomeCatalog.info(type)
+	var root := Node3D.new()
+	root.name = "Outside"
+	var p := HomeCatalog.plan(type, addon_ids)
+	var wall := MeshUtil.hex(home.get("wall"))
+	var trim := MeshUtil.hex(home.get("trim"))
+	var roof := MeshUtil.hex(home.get("roof", home.get("trim")))
+	var height := float(home.get("height", 2.6))
+	for f in p["floors"]:
+		var rect: Array = f["rect"]
+		if f["deck"]:
+			_floor(root, rect, MeshUtil.hex(f["color"]), true)
+		elif f["tent"]:
+			# A tent's canvas roof is the color of its trim, so it reads as a tent.
+			_roof(root, rect, wall.darkened(0.06), trim.lightened(0.3), height, 1.4, false)
+			_flags(root, rect, trim, height, minf(1.4, (float(mini(rect[2], rect[3])) + WALL) * 0.35))
+		else:
+			_roof(root, rect, wall, roof, height, 1.5, home.get("roof_spots", false))
+	_walk(root, home, p["walk"])
+	_edges(root, type, p["edges"].filter(func(e): return e["outside"]), solid, true)
+	for d in p["decor"]:
+		root.add_child(decor(d, solid))
+	return root
+
+
+static func _floor(root: Node3D, rect: Array, color: Color, deck: bool) -> void:
+	var floor_h := FurnitureCatalog.FLOOR_H
+	MeshUtil.box(root, Vector3(rect[2], floor_h, rect[3]), color,
+			Vector3(rect[0] + rect[2] / 2.0 - HALF, floor_h / 2.0, rect[1] + rect[3] / 2.0 - HALF))
+	if deck:
+		_planks(root, rect, color.darkened(0.12))
+
+
+static func _walk(root: Node3D, home: Dictionary, walk: Array) -> void:
+	for cell in walk:
 		MeshUtil.box(root, Vector3(0.84, 0.04, 0.84), MeshUtil.hex(home.get("path")),
 				Vector3(cell[0] + 0.5 - HALF, 0.02, cell[1] + 0.5 - HALF))
+
+
+## Walls, windows, doors, railings and gates along the plan's edges. Plain walls
+## on one grid line are merged into runs. From `outside`, windows are opaque and
+## every door is shut; inside, only the entrances are.
+static func _edges(root: Node3D, type: String, edges: Array, solid: bool, outside: bool) -> void:
+	var home := HomeCatalog.info(type)
+	var wall := MeshUtil.hex(home.get("wall"))
+	var trim := MeshUtil.hex(home.get("trim"))
+	var wood := MeshUtil.hex(home.get("deck")).darkened(0.3)
+	var height := float(home.get("height", 2.6))
 	var runs := {} # "h:<line>" or "v:<line>" -> [positions] of plain walls
-	for e in p["edges"]:
+	for e in edges:
 		var parts: PackedStringArray = e["key"].split(":")
 		if e["kind"] == "wall":
 			var line := "%s:%s" % [parts[0], parts[1] if parts[0] == "v" else parts[2]]
@@ -56,11 +116,17 @@ static func build(type: String, addon_ids: Array, solid := true, highlight := ""
 		root.add_child(piece)
 		match e["kind"]:
 			"window":
-				_window(piece, wall, trim, height, solid)
+				_window(piece, wall, trim, height, solid, outside)
 			"door":
-				_doorway(piece, wall, trim, height, solid)
+				if outside or e["entrance"]:
+					var tent: bool = HomeCatalog.room(type, e.get("room", "")).get("tent", false)
+					_door(piece, wall, trim, height, solid, wall.darkened(0.2) if tent else DOOR)
+				else:
+					_doorway(piece, wall, trim, height, solid)
 			"rail":
-				_rail(piece, MeshUtil.hex(home.get("deck")).darkened(0.3), solid)
+				_rail(piece, wood, solid)
+			"gate":
+				_gate(piece, wood, solid)
 	for line in runs:
 		var list: Array = runs[line]
 		list.sort()
@@ -70,9 +136,6 @@ static func build(type: String, addon_ids: Array, solid := true, highlight := ""
 				_wall_run(root, line, start, list[i], wall, trim, height, solid)
 				if i < list.size() - 1:
 					start = list[i + 1]
-	for d in p["decor"]:
-		root.add_child(decor(d, solid))
-	return root
 
 
 ## Shows or hides the decor taller than the walls (big trees and mushrooms),
@@ -166,8 +229,9 @@ static func _wall_run(root: Node3D, line: String, a: int, b: int, wall: Color, t
 		MeshUtil.collider(root, size, pos)
 
 
-## A wall piece with a window. Pieces run along their own X axis.
-static func _window(piece: Node3D, wall: Color, trim: Color, height: float, solid: bool) -> void:
+## A wall piece with a window. Pieces run along their own X axis. From
+## outside, the glass is opaque with a cross of glazing bars.
+static func _window(piece: Node3D, wall: Color, trim: Color, height: float, solid: bool, outside := false) -> void:
 	var low := height * 0.35
 	var high := height * 0.77
 	var width := 1.0 + WALL
@@ -175,7 +239,10 @@ static func _window(piece: Node3D, wall: Color, trim: Color, height: float, soli
 	MeshUtil.box(piece, Vector3(width, height - high, WALL), wall, Vector3(0, (high + height) / 2.0, 0))
 	for x in [-0.46, 0.46]:
 		MeshUtil.box(piece, Vector3(0.2, high - low, WALL), wall, Vector3(x, (low + high) / 2.0, 0))
-	MeshUtil.box(piece, Vector3(0.72, high - low, 0.03), GLASS, Vector3(0, (low + high) / 2.0, 0))
+	MeshUtil.box(piece, Vector3(0.72, high - low, 0.03), GLASS_OUTSIDE if outside else GLASS, Vector3(0, (low + high) / 2.0, 0))
+	if outside:
+		MeshUtil.box(piece, Vector3(0.72, 0.04, 0.06), trim.lightened(0.5), Vector3(0, (low + high) / 2.0, 0))
+		MeshUtil.box(piece, Vector3(0.04, high - low, 0.06), trim.lightened(0.5), Vector3(0, (low + high) / 2.0, 0))
 	MeshUtil.box(piece, Vector3(0.86, 0.05, WALL + 0.12), trim, Vector3(0, low, 0))
 	MeshUtil.box(piece, Vector3(width, CAP.x, CAP.y), trim, Vector3(0, height + CAP.x / 2.0, 0))
 	if solid:
@@ -197,6 +264,19 @@ static func _doorway(piece: Node3D, wall: Color, trim: Color, height: float, sol
 		MeshUtil.collider(piece, Vector3(1.0, height - door_h, WALL), Vector3(0, (door_h + height) / 2.0, 0))
 
 
+## A doorway with a shut door in it: a front door (walk into it to go in or
+## out) or, from outside, any door.
+static func _door(piece: Node3D, wall: Color, trim: Color, height: float, solid: bool, color: Color) -> void:
+	_doorway(piece, wall, trim, height, solid)
+	var door_h := minf(2.1, height - 0.25) - 0.03
+	MeshUtil.box(piece, Vector3(0.62, door_h, 0.06), color, Vector3(0, door_h / 2.0, 0))
+	MeshUtil.box(piece, Vector3(0.28, 0.28, 0.08), GLASS_OUTSIDE, Vector3(0, door_h * 0.74, 0))
+	for face in [-1.0, 1.0]:
+		MeshUtil.sphere(piece, 0.04, KNOB, Vector3(0.21, door_h * 0.48, face * 0.05))
+	if solid:
+		MeshUtil.collider(piece, Vector3(0.66, door_h, WALL), Vector3(0, door_h / 2.0, 0))
+
+
 ## A stretch of deck railing: two posts and two rails.
 static func _rail(piece: Node3D, wood: Color, solid: bool) -> void:
 	for x in [-0.47, 0.47]:
@@ -205,6 +285,53 @@ static func _rail(piece: Node3D, wood: Color, solid: bool) -> void:
 		MeshUtil.box(piece, Vector3(1.0, 0.07, 0.07), wood, Vector3(0, y, 0))
 	if solid:
 		MeshUtil.collider(piece, Vector3(1.0, RAIL_HEIGHT, 0.1), Vector3(0, RAIL_HEIGHT / 2.0, 0))
+
+
+## A gate in a deck's railing: taller posts and a shut gate of slats.
+static func _gate(piece: Node3D, wood: Color, solid: bool) -> void:
+	for x in [-0.47, 0.47]:
+		MeshUtil.box(piece, Vector3(0.13, RAIL_HEIGHT + 0.25, 0.13), wood, Vector3(x, (RAIL_HEIGHT + 0.25) / 2.0, 0))
+		MeshUtil.sphere(piece, 0.08, wood.lightened(0.2), Vector3(x, RAIL_HEIGHT + 0.3, 0))
+	var slat := wood.lightened(0.25)
+	for i in 5:
+		MeshUtil.box(piece, Vector3(0.1, RAIL_HEIGHT - 0.1, 0.05), slat, Vector3(-0.32 + i * 0.16, RAIL_HEIGHT / 2.0, 0))
+	for y in [0.2, RAIL_HEIGHT - 0.12]:
+		MeshUtil.box(piece, Vector3(0.82, 0.07, 0.07), wood, Vector3(0, y, 0.03))
+	if solid:
+		MeshUtil.collider(piece, Vector3(1.0, RAIL_HEIGHT, 0.1), Vector3(0, RAIL_HEIGHT / 2.0, 0))
+
+
+## A gable roof over a room, its ridge along the room's long side: two sloping
+## slabs that overhang a little, and wall-colored triangles closing each end.
+## `spots` dots it with white, like a toadstool's cap.
+static func _roof(root: Node3D, rect: Array, gable: Color, color: Color, height: float, max_rise: float,
+		spots: bool) -> void:
+	var along_x: bool = rect[2] >= rect[3]
+	var length := float(rect[2] if along_x else rect[3]) + WALL
+	var span := float(rect[3] if along_x else rect[2]) + WALL
+	var rise := minf(span * 0.35, max_rise)
+	var yaw := 0.0 if along_x else PI / 2.0
+	var turn := Basis(Vector3.UP, yaw)
+	var base := Vector3(rect[0] + rect[2] / 2.0 - HALF, height + CAP.x, rect[1] + rect[3] / 2.0 - HALF)
+	for end in [-1.0, 1.0]:
+		var g := PrismMesh.new()
+		g.size = Vector3(span, rise, WALL)
+		MeshUtil.add(root, g, gable, base + turn * Vector3(end * (length - WALL) / 2.0, rise / 2.0, 0),
+				Vector3(0, rad_to_deg(yaw) + 90.0, 0))
+	var angle := atan2(rise, span / 2.0)
+	var slope := (span / 2.0) / cos(angle) + 0.35
+	for side in [-1.0, 1.0]:
+		var down := Vector3(0, -sin(angle), side * cos(angle))
+		var up := Vector3(0, cos(angle), side * sin(angle))
+		var mid := Vector3(0, rise / 2.0, side * span / 4.0) + down * 0.17 + up * 0.05
+		var slab := MeshUtil.box(root, Vector3(length + 0.35, 0.1, slope), color, base + turn * mid)
+		slab.rotation = Vector3(side * angle, yaw, 0)
+		if spots:
+			for i in 3:
+				var at := Vector3((i - 1) * length * 0.3, rise * 0.45, side * span * 0.28) + up * 0.08
+				MeshUtil.sphere(root, 0.24, Color("fff6ea"), base + turn * at, Vector3(1, 0.35, 1))
+	MeshUtil.box(root, Vector3(length + 0.35, 0.09, 0.18), color.darkened(0.2), base + Vector3(0, rise + 0.04, 0),
+			Vector3(0, rad_to_deg(yaw), 0))
 
 
 ## A tent's top: a ridge pole along its long side, held up over the middle of
@@ -229,9 +356,19 @@ static func _tent_top(root: Node3D, rect: Array, canvas: Color, trim: Color, hei
 		gable.size = Vector3(span + WALL, rise, 0.06)
 		var offset := Vector3(end * length / 2.0, rise / 2.0, 0).rotated(Vector3.UP, deg_to_rad(turn.y))
 		MeshUtil.add(root, gable, canvas, center + offset, Vector3(0, turn.y + 90, 0))
-		var flag := Vector3(end * (length / 2.0 + 0.1), rise + 0.25, 0).rotated(Vector3.UP, deg_to_rad(turn.y))
-		MeshUtil.box(root, Vector3(0.04, 0.5, 0.04), wood, center + flag)
-		MeshUtil.add(root, _pennant(), trim, center + flag + Vector3(0, 0.12, 0), Vector3(0, turn.y, -90))
+	_flags(root, rect, trim, height, rise)
+
+
+## A little pennant on a pole at each end of a tent's ridge.
+static func _flags(root: Node3D, rect: Array, trim: Color, height: float, rise: float) -> void:
+	var along_x: bool = rect[2] >= rect[3]
+	var length := float(rect[2] if along_x else rect[3])
+	var center := Vector3(rect[0] + rect[2] / 2.0 - HALF, height, rect[1] + rect[3] / 2.0 - HALF)
+	var turn := 0.0 if along_x else 90.0
+	for end in [-1, 1]:
+		var flag := Vector3(end * (length / 2.0 + 0.1), rise + 0.25, 0).rotated(Vector3.UP, deg_to_rad(turn))
+		MeshUtil.box(root, Vector3(0.04, 0.5, 0.04), Color("8d5b3a"), center + flag)
+		MeshUtil.add(root, _pennant(), trim, center + flag + Vector3(0, 0.12, 0), Vector3(0, turn, -90))
 
 
 static func _pennant() -> PrismMesh:

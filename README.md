@@ -39,7 +39,7 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | F / G | Feed / play with your pet |
 | T | Quick chat (preset phrases) |
 | B | Decorate your home (left click place, right click or the wastebasket removes, R turn, E next look) |
-| H | Go to your home |
+| H | Go inside your home (walk out the front door to come back to town) |
 | Shop button | Open the shop (or click your wallet) |
 | Homes button | Buy homes, move into one, or add rooms (also from the decorating banner's Rooms button) |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
@@ -75,10 +75,11 @@ currency or XP away. It changes this device's save only.
 - **Pets**: cats and kittens, dogs and birds in 19 animated coats, plus a bunny and a dragon in any colors,
   each with a name. Pets follow you, walk and run, wander when you stand still, react when fed or played
   with, and have fullness and happiness that slowly drop.
-- **Homes**: each player gets a 12×12 plot with a ready-built, furnished home, starting with the free
-  Sprout Cottage. Players decorate it with 18 kinds of furniture (beds, sofas, a fridge, a bathtub, an
-  arcade machine and more), most in several styles; the walls and floors stay as built. Homes save
-  automatically.
+- **Homes**: each player gets a big plot in town with a ready-built home, starting with the free Sprout
+  Cottage. Town only shows homes from outside: walk into the front door to go inside, to a space of its
+  own, and back out the same way. Players decorate the inside with 18 kinds of furniture (beds, sofas, a
+  fridge, a bathtub, an arcade machine and more), most in several styles; the walls and floors stay as
+  built. Anyone can walk in to visit. Homes save automatically.
 - **More homes and rooms**: the Homes window sells three more homes (the Oak Lookout under a giant oak,
   the Sunpatch Safari Camp's tents around a campfire, and Toadstool Hollow among giant mushrooms) and rooms
   to add to each, for Acorns once you reach their level, or for Stardust. Own as many as you like and move

@@ -1,7 +1,8 @@
 class_name BuildController
 extends Node
-## Lets the local player edit their own plot: a ghost preview follows the
-## mouse on the grid, and edits are saved locally and sent to the host.
+## Lets the local player decorate the inside of their own home (`house`, set
+## while they're in it): a ghost preview follows the mouse on the grid, and
+## edits are saved locally and sent to the host.
 
 signal layout_edited(layout: Array)
 ## Sent after a successful placement with the entry key ("sofa:3").
@@ -102,7 +103,8 @@ func _process(delta: float) -> void:
 	if _send_timer >= 0.0:
 		_send_timer -= delta
 		if _send_timer < 0.0:
-			layout_edited.emit(house.layout.duplicate(true))
+			# From the save, so an edit still goes out if you've just left home.
+			layout_edited.emit(Homes.items(Homes.current()).duplicate(true))
 	if not active or not player.camera:
 		return
 	var mouse := player.get_viewport().get_mouse_position()

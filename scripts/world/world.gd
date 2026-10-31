@@ -1,5 +1,8 @@
 extends Node3D
-## The shared neighborhood: a plaza surrounded by house plots.
+## The shared neighborhood: a plaza surrounded by house plots. Town only shows
+## homes from outside; walking in through a front door takes you to that home's
+## inside, a space of its own far from town that is only built while you're in
+## it (see House and HomePlot).
 ##
 ## Networking model (listen server): the host is authoritative. Clients send
 ## their profile and house edits to the host, which checks them and then
@@ -19,8 +22,14 @@ const GLADE_ORIGIN := Vector3(600, 0, 0)
 const SKY_GARDEN := Vector3(40, 36, -2)
 const SKY_PORTAL := Vector3(0, 0, -36)
 const LAND_NAMES := {"town": "Hometown", "glade": "Starfall Glade"}
+## Insides of homes are built out here, one spot per plot, far from both lands
+## (and from each other) so no one sees across.
+const HOMES_ORIGIN := Vector3(-1500, 0, 0)
+const HOME_SPACING := 300.0
+## After walking through a door or portal, doors ignore you this long.
+const DOOR_COOLDOWN := 1.0
 
-var houses: Array[House] = []
+var plots: Array[HomePlot] = []
 ## Each player's home as everyone sees it, kept on every peer:
 ## peer id -> {"type", "rooms", "items"} (see HomeCatalog).
 var homes := {}
@@ -52,18 +61,21 @@ var _lock_level := 0 # The level the portal locks were last set for.
 var _sky: SkyGarden
 var _in_sky := false
 var _build_home_shown := "" # What the decorating banner last said about the home.
+var _inside: House # The inside of the home the local player is in, or null.
+var _inside_plot := -1
+var _door_time := -10.0 # When the local player last went through a door.
 
 
 func _ready() -> void:
 	_build_environment()
 	for i in PLOT_COUNT:
-		var house := House.new()
-		house.name = "Plot%d" % i
-		house.position = plot_center(i)
-		house.rotation_degrees.y = 0.0 if i < 4 else 180.0
-		house.set_owner_name("")
-		_lands["town"].add_child(house)
-		houses.append(house)
+		var plot := HomePlot.new()
+		plot.name = "Plot%d" % i
+		plot.position = plot_center(i)
+		plot.rotation_degrees.y = 0.0 if i < 4 else 180.0
+		plot.door_entered.connect(_on_plot_door.bind(i))
+		_lands["town"].add_child(plot)
+		plots.append(plot)
 
 	_players = Node3D.new()
 	_players.name = "Players"
@@ -126,10 +138,16 @@ func _exit_tree() -> void:
 	_save_local_pet()
 
 
+## Four lots on each side of the plaza, fronts on the street.
 static func plot_center(i: int) -> Vector3:
-	var x := -27.0 + 18.0 * float(i % 4)
-	var z := -24.0 if i < 4 else 24.0
+	var x := -39.0 + 26.0 * float(i % 4)
+	var z := -29.0 if i < 4 else 29.0
 	return Vector3(x, 0, z)
+
+
+## Where the inside of plot `i`'s home is built.
+static func inside_origin(i: int) -> Vector3:
+	return HOMES_ORIGIN + Vector3(0, 0, i * HOME_SPACING)
 
 
 # --- Joining and leaving -----------------------------------------------------
@@ -192,9 +210,9 @@ func _spawn_player(data: Dictionary) -> Node:
 	if not homes.has(id):
 		homes[id] = HomeCatalog.sanitize(d.get("home"))
 	if plot >= 0:
-		houses[plot].owner_id = id
-		houses[plot].set_owner_name(player.display_name)
-		houses[plot].set_home(homes[id])
+		plots[plot].owner_id = id
+		plots[plot].set_owner_name(player.display_name)
+		plots[plot].set_home(homes[id])
 	player.tree_exiting.connect(_on_player_removed.bind(id))
 	if id == multiplayer.get_unique_id():
 		local_player = player
@@ -212,11 +230,10 @@ func _setup_local_player(player: Player) -> void:
 	_hud.set_pet(player.pet.config["name"], PetBuilder.species_name(player.pet.config), player.pet.config)
 	player.pet_needs_changed.connect(_hud.set_pet_needs)
 	var plot: int = player_plots.get(player.peer_id, -1)
+	_build.player = player
 	if plot >= 0:
-		_build.house = houses[plot]
-		_build.player = player
-		houses[plot].sign_zone.enabled = true
-		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go there." % [player.display_name, plot + 1])
+		plots[plot].sign_zone.enabled = true
+		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go inside." % [player.display_name, plot + 1])
 	else:
 		_hud.toast("Welcome! The neighborhood is full, so you are visiting today.")
 	Progress.award("daily")
@@ -226,10 +243,14 @@ func _on_player_removed(id: int) -> void:
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
 	var plot: int = player_plots.get(id, -1)
-	if plot >= 0 and houses[plot].owner_id == id:
-		houses[plot].owner_id = 0
-		houses[plot].set_owner_name("")
-		houses[plot].clear()
+	if plot >= 0 and plots[plot].owner_id == id:
+		# Visitors inside a home whose player left go back out to the street.
+		if _inside_plot == plot and id != multiplayer.get_unique_id():
+			_hud.toast("%s left, so you're back outside." % player_names.get(id, "Your host"))
+			_leave_home(-1)
+		plots[plot].owner_id = 0
+		plots[plot].set_owner_name("")
+		plots[plot].clear()
 	if id != multiplayer.get_unique_id() and player_names.has(id):
 		_hud.add_chat("*", "%s left" % player_names[id])
 	player_plots.erase(id)
@@ -250,9 +271,9 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 # --- Homes ------------------------------------------------------------------------
-# Each player's plot shows the home they live in. Furniture edits, moving to
-# another home and new rooms all send the whole home to the host, which checks
-# it and tells everyone.
+# Each player's plot shows the outside of the home they live in. Furniture
+# edits, moving to another home and new rooms all send the whole home to the
+# host, which checks it and tells everyone; whoever is inside sees it change.
 
 ## Furniture edits from decorating.
 func _submit_house(layout: Array) -> void:
@@ -287,20 +308,31 @@ func apply_home(id: int, home: Dictionary) -> void:
 	if id == multiplayer.get_unique_id() and not multiplayer.is_server():
 		return
 	var plot: int = player_plots.get(id, -1)
-	if plot >= 0 and houses[plot].owner_id == id:
-		houses[plot].set_home(home)
+	if plot < 0 or plots[plot].owner_id != id:
+		return
+	plots[plot].set_home(home)
+	if _inside_plot == plot and id != multiplayer.get_unique_id():
+		if home["type"] != _inside.home_type:
+			# They moved to another of their homes: so does everyone visiting.
+			_enter_home(plot, 0)
+		else:
+			_inside.set_home(home)
 
 
-func _own_house() -> House:
-	var plot: int = player_plots.get(local_player.peer_id, -1) if local_player else -1
-	return houses[plot] if plot >= 0 else null
+func _own_plot() -> int:
+	return player_plots.get(local_player.peer_id, -1) if local_player else -1
+
+
+## The inside of your own home while you're in it, else null.
+func _own_inside() -> House:
+	return _inside if _inside_plot >= 0 and _inside_plot == _own_plot() else null
 
 
 ## From the Homes window: moves into that home if it isn't the one lived in,
-## then goes there.
+## then goes inside.
 func _visit_home(type: String) -> void:
-	var house := _own_house()
-	if house == null:
+	var plot := _own_plot()
+	if plot < 0:
 		_hud.toast("The neighborhood is full right now, so there's no plot for a home.")
 		return
 	if type != Homes.current():
@@ -308,23 +340,95 @@ func _visit_home(type: String) -> void:
 			return
 		if _build.active:
 			_toggle_build()
-		house.set_home(Homes.active())
+		plots[plot].set_home(Homes.active())
 		_submit_home(Homes.active())
 		_hud.toast("Welcome to your %s!" % HomeCatalog.home_name(type))
 	_go_home()
 
 
-## After buying something: a new room shows up on the plot right away.
+## After buying something: a new room shows up on the plot (and inside, if
+## you're there) right away.
 func _refresh_own_home() -> void:
-	var house := _own_house()
-	if house == null:
+	var plot := _own_plot()
+	if plot < 0:
 		return
 	var home := Homes.active()
-	if home["type"] != house.home_type or home["rooms"] != house.rooms:
-		house.set_home(home)
+	if home["type"] != plots[plot].home_type or home["rooms"] != plots[plot].rooms:
+		plots[plot].set_home(home)
 		_submit_home(home)
-		if _build.active:
-			house.set_decorating(true, Homes.plan_labels(house.home_type))
+		var inside := _own_inside()
+		if inside:
+			inside.set_home(home)
+			if _build.active:
+				inside.set_decorating(true, Homes.plan_labels(inside.home_type))
+
+
+## Goes inside the home on plot `plot`, through its entrance `door`: builds the
+## inside out of sight of town and moves the local player there.
+func _enter_home(plot: int, door: int) -> void:
+	var owner_id := plots[plot].owner_id
+	if not local_player or owner_id == 0 or not homes.has(owner_id):
+		return
+	var mine := owner_id == local_player.peer_id
+	_close_inside()
+	var inside := House.new()
+	inside.name = "Inside"
+	inside.position = inside_origin(plot)
+	add_child(inside)
+	inside.set_home(Homes.active() if mine else homes[owner_id])
+	inside.door_entered.connect(_on_inside_door)
+	_inside = inside
+	_inside_plot = plot
+	if mine:
+		_build.house = inside
+	var spot := inside.arrival(door)
+	# A little apart, so friends coming in together don't land on each other.
+	local_player.teleport(spot["position"] + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)))
+	local_player.set_camera_yaw(spot["yaw"])
+	_door_time = _now()
+	var name := HomeCatalog.home_name(inside.home_type)
+	_hud.toast(("Welcome home!" if mine else "Welcome to %s's %s!" % [player_names.get(owner_id, "a friend"), name])
+			+ " Walk out the door to go back outside.")
+
+
+## Goes back out to town through door `door` of the home you're in (-1: to
+## the street in front of the plot).
+func _leave_home(door: int) -> void:
+	var plot := _inside_plot
+	if plot < 0:
+		return
+	if _build.active:
+		_toggle_build()
+	var spot := plots[plot].departure(door) if door >= 0 and plots[plot].home_type != "" \
+			else {"position": plots[plot].front(), "yaw": plots[plot].global_rotation.y}
+	_close_inside()
+	local_player.teleport(spot["position"])
+	local_player.set_camera_yaw(spot["yaw"])
+	_door_time = _now()
+
+
+## Removes the inside you were in: in town, no insides are built at all.
+func _close_inside() -> void:
+	if _inside:
+		if _build.house == _inside:
+			_build.house = null
+		_inside.queue_free()
+	_inside = null
+	_inside_plot = -1
+
+
+func _on_plot_door(player: Player, door: int, plot: int) -> void:
+	if player == local_player and not _build.active and _now() - _door_time > DOOR_COOLDOWN:
+		_enter_home(plot, door)
+
+
+func _on_inside_door(player: Player, door: int) -> void:
+	if player == local_player and not _build.active and _now() - _door_time > DOOR_COOLDOWN:
+		_leave_home(door)
+
+
+static func _now() -> float:
+	return Time.get_ticks_msec() / 1000.0
 
 
 # --- Avatars ---------------------------------------------------------------------
@@ -493,31 +597,49 @@ func _travel(player: Player, to: Portal) -> void:
 	player.set_camera_yaw(to.arrival_yaw())
 
 
-## Which land a spot is in. The glade is far enough away that a simple
-## split halfway between works.
+## Which land a spot is in: "town", "glade", or "home" (inside a home). They
+## are far enough apart that a simple split halfway between works.
 static func land_at(pos: Vector3) -> String:
+	if pos.x < HOMES_ORIGIN.x / 2.0:
+		return "home"
 	return "glade" if pos.x > GLADE_ORIGIN.x / 2.0 else "town"
 
 
+## Who can see whom: everyone outdoors shares one place, and each home's
+## inside is a place of its own. "world" or "home:<plot>".
+static func place_at(pos: Vector3) -> String:
+	if land_at(pos) != "home":
+		return "world"
+	return "home:%d" % roundi((pos.z - HOMES_ORIGIN.z) / HOME_SPACING)
+
+
 ## Swaps the sky and light for the land the local player is in, and hides the
-## other land so it costs nothing to draw.
+## other land so it costs nothing to draw. Inside a home, both lands hide.
 func _enter_land(land: String) -> void:
+	var was := _land
 	_land = land
-	_env.environment = Lighting.environment(true, land)
-	_sun.light_color = Lighting.LANDS[land]["sun"]
+	var light := "town" if land == "home" else land
+	_env.environment = Lighting.environment(true, light)
+	_sun.light_color = Lighting.LANDS[light]["sun"]
 	for key in _lands:
 		_lands[key].visible = key == land
 	if land != "glade":
 		_glade.chase.stop()
-	_hud.toast("Welcome to %s!" % LAND_NAMES[land])
-	Progress.visit(land)
+	if land != "home":
+		# Out of every home (even by falling off the world): no insides stay built.
+		_close_inside()
+		if was != "home":
+			_hud.toast("Welcome to %s!" % LAND_NAMES[land])
+		Progress.visit(land)
 
 
+## Goes inside your own home, through its front door.
 func _go_home() -> void:
-	var plot: int = player_plots.get(local_player.peer_id, -1) if local_player else -1
+	var plot := _own_plot()
 	if plot >= 0:
-		local_player.teleport(houses[plot].to_global(Vector3(0, 0.5, House.PLOT_SIZE / 2.0 + 1.5)))
-		local_player.set_camera_yaw(houses[plot].rotation.y)
+		_enter_home(plot, 0)
+	elif local_player:
+		_hud.toast("The neighborhood is full right now, so there's no plot for a home.")
 
 
 func _pet_action(feed: bool) -> void:
@@ -536,11 +658,11 @@ func _pet_action(feed: bool) -> void:
 
 
 func _toggle_build() -> void:
-	if not _build.house:
+	if _own_plot() < 0:
 		_hud.toast("You need a home to decorate. The neighborhood is full right now.")
 		return
-	# Homes are in town, so decorating from another land takes you home first.
-	if not _build.active and land_at(local_player.global_position) != "town":
+	# Decorating happens inside your home, so it takes you there first.
+	if not _build.active and _own_inside() == null:
 		_go_home()
 	_glade.chase.stop()
 	_build.set_active(not _build.active)
@@ -567,6 +689,11 @@ func _process(delta: float) -> void:
 		if zone != _zone:
 			_zone = zone
 			_hud.show_prompt(zone)
+		# Only players in the same place show: outdoors, or inside the same home.
+		var here := place_at(local_player.global_position)
+		for p in _players.get_children():
+			if p != local_player and p is Player:
+				p.visible = place_at(p.global_position) == here
 	if _build.active:
 		var shown := "%s:%d:%d" % [_build.house.home_type, _build.house.layout.size(), _build.house.capacity]
 		if shown != _build_home_shown:
