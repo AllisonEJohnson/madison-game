@@ -41,6 +41,13 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | H | Go to your home |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
 
+Walk into the glowing portal west of the plaza to visit **Starfall Glade**, and through its portal to come back.
+
+**Admin console** (for the game's makers): press <kbd>`</kbd> (left of 1) to open it. It only exists when
+running from the editor or with `godot --path . -- --admin`. `stardust 500` grants premium currency,
+`acorns 500` grants earned currency, `member 30` adds 30 days of membership, `wallet` shows balances and
+`help` lists commands. Amounts can be negative to take currency away. It changes this device's save only.
+
 ## What's in the prototype
 
 - **Kid-friendly UI**: one shared look (rounded cards, chunky buttons, color icons, two friendly fonts)
@@ -63,6 +70,10 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 - **Houses**: each player gets a 12×12 plot with a ready-built, furnished house. Players decorate it
   with 18 kinds of furniture (beds, sofas, a fridge, a bathtub, an arcade machine and more), most in
   several styles; the walls and floors stay as built. Homes save automatically.
+- **Starfall Glade**: a fantasy land through a portal in town, with a crystal plaza, a mushroom village,
+  a lily pond, a castle, floating islands and wandering fantasy animals.
+- **Wallet**: Acorns (earned) and Stardust (premium) balances and membership, shown on the player card.
+  Nothing earns or spends them yet; the admin console grants them for testing.
 - **Online play**: up to 8 players in one neighborhood using Godot's high-level multiplayer (ENet).
 - **Kid safety**: no free-text chat or typed names. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kid-safety).
 
@@ -70,10 +81,11 @@ Fonts are [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Nunito](http
 (SIL Open Font License) and icons are [Fluent Emoji](https://github.com/microsoft/fluentui-emoji) (MIT); their
 licenses are next to them in `assets/ui/`.
 
-The trees, bushes, rocks and grass are the free [KayKit Forest Nature Pack](https://kaylousberg.itch.io/kaykit-forest)
-by Kay Lousberg (CC0), kept in `assets/kaykit_forest`. Furniture, pets and flowers use licensed models from
-a private repo (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them the game still runs,
-using simple shapes. To get them, clone that repo into an `itHappy` folder here before opening the project:
+The grass is the free [KayKit Forest Nature Pack](https://kaylousberg.itch.io/kaykit-forest)
+by Kay Lousberg (CC0), kept in `assets/kaykit_forest`, which also supplies trees, bushes and rocks when the
+licensed art is missing. Characters, furniture, pets, the town's trees and flowers and all of Starfall Glade
+use licensed models from a private repo (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#art)). Without them
+the game still runs, using simple shapes and the free forest models. To get them, clone that repo into an `itHappy` folder here before opening the project:
 
 ```sh
 git clone https://github.com/AllisonEJohnson/madison-game-art.git itHappy
@@ -97,6 +109,8 @@ godot --headless --path . -- --join=127.0.0.1 --smoke-test
 # Screenshots of the menu, or of your home in build mode
 godot --path . -- --screenshot=/tmp/menu.png
 godot --path . -- --host --shot-build --screenshot=/tmp/home.png
+# ...or of any spot: x/z/camera turn in degrees/tilt/distance (Starfall Glade starts at x 600)
+godot --path . -- --host --shot-ui=goto:600/22/0/-0.45/26 --screenshot=/tmp/glade.png
 
 # --shot-ui runs UI steps before the screenshot, for example a creator tab, a catalog
 # category or search, or the whole furniture pack as a stress test (see scripts/dev/screenshot.gd)

@@ -8,6 +8,10 @@ extends Node3D
 
 const PLOT_COUNT := 8
 const PHRASE_COOLDOWN := 1.0
+## Starfall Glade sits this far off to the side of the town, out of sight.
+## Being in the same scene keeps networking the same everywhere.
+const GLADE_ORIGIN := Vector3(600, 0, 0)
+const LAND_NAMES := {"town": "Hometown", "glade": "Starfall Glade"}
 
 var houses: Array[House] = []
 var house_layouts := {} # peer id -> layout, kept on every peer
@@ -22,6 +26,10 @@ var _build: BuildController
 var _server_players := {} # host only: peer id -> sanitized public profile
 var _last_phrase := {} # host only: peer id -> time of last phrase
 var _save_timer := 0.0
+var _land := "town" # Where the local player is: "town" or "glade".
+var _lands := {} # land -> its root node
+var _env: WorldEnvironment
+var _sun: DirectionalLight3D
 
 
 func _ready() -> void:
@@ -32,7 +40,7 @@ func _ready() -> void:
 		house.position = plot_center(i)
 		house.rotation_degrees.y = 0.0 if i < 4 else 180.0
 		house.set_owner_name("")
-		add_child(house)
+		_lands["town"].add_child(house)
 		houses.append(house)
 
 	_players = Node3D.new()
@@ -52,6 +60,9 @@ func _ready() -> void:
 	_hud.home_pressed.connect(_go_home)
 	_hud.pet_action.connect(_pet_action)
 	_hud.leave_confirmed.connect(func(): Net.back_to_menu())
+	GameState.wallet_changed.connect(_hud.set_wallet)
+	if AdminConsole.enabled():
+		add_child(AdminConsole.new())
 	_build = BuildController.new()
 	add_child(_build)
 	_build.layout_edited.connect(_submit_house)
@@ -284,6 +295,32 @@ func _unhandled_input(event: InputEvent) -> void:
 		_pet_action(false)
 
 
+# --- Lands and portals ---------------------------------------------------------
+
+func _travel(player: Player, to: Portal) -> void:
+	if player != local_player or _build.active:
+		return
+	player.teleport(to.arrival_point())
+	player.set_camera_yaw(to.arrival_yaw())
+
+
+## Which land a spot is in. The glade is far enough away that a simple
+## split halfway between works.
+static func land_at(pos: Vector3) -> String:
+	return "glade" if pos.x > GLADE_ORIGIN.x / 2.0 else "town"
+
+
+## Swaps the sky and light for the land the local player is in, and hides the
+## other land so it costs nothing to draw.
+func _enter_land(land: String) -> void:
+	_land = land
+	_env.environment = Lighting.environment(true, land)
+	_sun.light_color = Lighting.LANDS[land]["sun"]
+	for key in _lands:
+		_lands[key].visible = key == land
+	_hud.toast("Welcome to %s!" % LAND_NAMES[land])
+
+
 func _go_home() -> void:
 	var plot: int = player_plots.get(local_player.peer_id, -1) if local_player else -1
 	if plot >= 0:
@@ -308,6 +345,9 @@ func _toggle_build() -> void:
 	if not _build.house:
 		_hud.toast("You need a home to decorate. The neighborhood is full right now.")
 		return
+	# Homes are in town, so decorating from another land takes you home first.
+	if not _build.active and land_at(local_player.global_position) != "town":
+		_go_home()
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)
 	_show_build_selection()
@@ -318,6 +358,10 @@ func _show_build_selection() -> void:
 
 
 func _process(delta: float) -> void:
+	if local_player and is_instance_valid(local_player) and local_player.is_inside_tree():
+		var land := land_at(local_player.global_position)
+		if land != _land:
+			_enter_land(land)
 	_save_timer += delta
 	if _save_timer > 20.0:
 		_save_timer = 0.0
@@ -333,11 +377,27 @@ func _save_local_pet() -> void:
 # --- Scenery -------------------------------------------------------------------
 
 func _build_environment() -> void:
-	var env := WorldEnvironment.new()
-	env.environment = Lighting.environment()
-	add_child(env)
-	add_child(Lighting.sun())
+	_env = WorldEnvironment.new()
+	_env.environment = Lighting.environment()
+	add_child(_env)
+	_sun = Lighting.sun()
+	add_child(_sun)
+	var town := Node3D.new()
+	town.name = "Town"
+	add_child(town)
+	_lands["town"] = town
 	var ground := Node3D.new()
 	ground.name = "Ground"
-	add_child(ground)
+	town.add_child(ground)
 	Scenery.build(ground)
+	var glade := FantasyLand.new()
+	glade.position = GLADE_ORIGIN
+	glade.visible = false
+	add_child(glade)
+	_lands["glade"] = glade
+	var to_glade := Portal.new().setup("Starfall Glade", Color("b77cff"))
+	to_glade.position = Scenery.GLADE_PORTAL
+	to_glade.rotation.y = PI / 2 # Faces the plaza.
+	town.add_child(to_glade)
+	to_glade.entered.connect(_travel.bind(glade.portal))
+	glade.portal.entered.connect(_travel.bind(to_glade))

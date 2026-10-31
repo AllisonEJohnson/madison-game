@@ -4,7 +4,9 @@ extends Node
 ## --shot-ui=a,b,... opens parts of the interface first: in the world "chat",
 ## "help", "leave", "tuck", "say:<phrase index>", "category:<id>", "search:<words>", "favorite:<key>" or
 ## "stress" (fills build mode's catalog with every model in the furniture
-## pack, to check it copes with hundreds of items); in the menu "tab:<n>",
+## pack, to check it copes with hundreds of items), "goto:<x>/<z>/<yaw>[/<pitch>/<distance>]"
+## (moves you there and turns the camera; the glade starts at x 600), "admin:<command>" (types a
+## command into the admin console, which needs a debug build or --admin); in the menu "tab:<n>",
 ## "part:<n>" or "names".
 
 var path := ""
@@ -71,6 +73,18 @@ func _ui_step(step: String) -> void:
 			scene._open_name_picker()
 		"stress":
 			_fill_with_whole_pack(hud._browser)
+		"admin":
+			var console := scene.find_children("*", "AdminConsole", false, false)
+			if not console.is_empty():
+				if not console[0]._panel.visible:
+					console[0].toggle()
+				console[0]._on_submitted(arg)
+		"goto":
+			var v := arg.split("/")
+			scene.local_player.teleport(Vector3(float(v[0]), 0.5, float(v[1])))
+			scene.local_player.set_camera_yaw(deg_to_rad(float(v[2])))
+			if v.size() >= 5:
+				scene.local_player.set_camera_view(float(v[3]), float(v[4]))
 
 
 func _fill_with_whole_pack(browser: CatalogBrowser) -> void:
