@@ -2,6 +2,8 @@ extends Node
 ## Thin wrapper around Godot's ENet high-level multiplayer.
 ## The menu picks host or join, then the world scene calls start() once it is
 ## loaded, so the scene tree exists before any replication arrives.
+## Browsers can't open ENet's UDP sockets, so the web build plays solo: the
+## world runs on an OfflineMultiplayerPeer, which acts as a server with no peers.
 
 signal connection_ready
 signal status_changed(text: String)
@@ -14,6 +16,7 @@ const MENU_SCENE := "res://scenes/main_menu.tscn"
 const WORLD_SCENE := "res://scenes/world.tscn"
 
 var mode := Mode.NONE
+var online_available := not OS.has_feature("web")
 var address := "127.0.0.1"
 var port := DEFAULT_PORT
 ## Shown on the menu after being sent back there (e.g. "The host left").
@@ -41,6 +44,11 @@ func request_join(addr: String, p: int) -> void:
 
 ## Called by the world scene. Returns OK, or an error the world shows to the player.
 func start() -> Error:
+	if not online_available:
+		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+		status_changed.emit("Playing in your browser (just you)")
+		connection_ready.emit.call_deferred()
+		return OK
 	var peer := ENetMultiplayerPeer.new()
 	var err: Error
 	if mode == Mode.HOST:

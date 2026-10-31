@@ -121,11 +121,12 @@ func _build_left_panel() -> Control:
 
 	box.add_child(_heading("Play"))
 	var play := Button.new()
-	play.text = "Play (host a world)"
+	play.text = "Play (host a world)" if Net.online_available else "Play"
 	play.custom_minimum_size.y = 44
 	play.pressed.connect(_play)
 	box.add_child(play)
 	var port_row := HBoxContainer.new()
+	port_row.visible = Net.online_available
 	var port_label := Label.new()
 	port_label.text = "Port"
 	port_row.add_child(port_label)
@@ -137,6 +138,7 @@ func _build_left_panel() -> Control:
 	port_row.add_child(_port)
 	box.add_child(port_row)
 	var join_row := HBoxContainer.new()
+	join_row.visible = Net.online_available
 	_address = LineEdit.new()
 	_address.text = "127.0.0.1"
 	_address.placeholder_text = "Host address"
@@ -147,6 +149,12 @@ func _build_left_panel() -> Control:
 	join.pressed.connect(_join)
 	join_row.add_child(join)
 	box.add_child(join_row)
+	if not Net.online_available:
+		var solo := Label.new()
+		solo.text = "In the browser, the neighborhood is just for you.\nPlaying with friends needs the downloaded game."
+		solo.add_theme_font_size_override("font_size", 12)
+		solo.modulate = Color(1, 1, 1, 0.7)
+		box.add_child(solo)
 
 	_message = Label.new()
 	_message.modulate = Color("ffb3b3")
