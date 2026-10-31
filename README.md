@@ -1,6 +1,6 @@
 # Hometown Pals
 
-An original online 3D neighborhood game for kids, built with **Godot 4.3+** (GDScript).
+An original online 3D neighborhood game for kids, built with **Godot 4.7+** (GDScript).
 Style your character, build and decorate your own home, and bring your pet everywhere.
 
 ![Character creator](docs/menu.png)
@@ -17,7 +17,7 @@ downloaded game below. Your character, pet and home are saved in the browser.
 
 ## Run it
 
-1. Install [Godot 4.3 or newer](https://godotengine.org/download) (standard build, not .NET).
+1. Install [Godot 4.7 or newer](https://godotengine.org/download) (standard build, not .NET).
 2. Open Godot, click **Import**, and pick this folder's `project.godot`.
 3. Press **F5**. Style your character, then click **Play (host a world)**.
 
@@ -55,7 +55,7 @@ All art is built from simple shapes in code, so there are no asset files to mana
 
 ## Developer helpers
 
-To build the browser version yourself, install the 4.3 export templates (Editor > Manage Export Templates),
+To build the browser version yourself, install the 4.7.2 export templates (Editor > Manage Export Templates),
 then use **Project > Export > Web**, or from a terminal:
 
 ```sh

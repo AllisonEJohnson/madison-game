@@ -301,26 +301,9 @@ func _save_local_pet() -> void:
 
 func _build_environment() -> void:
 	var env := WorldEnvironment.new()
-	var environment := Environment.new()
-	var sky := Sky.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color("6fb6ff")
-	sky_mat.sky_horizon_color = Color("cfe9ff")
-	sky_mat.ground_horizon_color = Color("cfe9ff")
-	sky.sky_material = sky_mat
-	environment.background_mode = Environment.BG_SKY
-	environment.sky = sky
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("b9d4ff")
-	environment.ambient_light_energy = 0.45
-	env.environment = environment
+	env.environment = Lighting.environment()
 	add_child(env)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, -35, 0)
-	sun.shadow_enabled = true
-	sun.light_energy = 0.85
-	add_child(sun)
+	add_child(Lighting.sun())
 
 	var ground := Node3D.new()
 	ground.name = "Ground"
@@ -333,7 +316,7 @@ func _build_environment() -> void:
 		MeshUtil.box(ground, Vector3(74, 0.02, 3.5), road, Vector3(0, 0.01, z))
 	MeshUtil.box(ground, Vector3(3.5, 0.02, 31), road, Vector3(0, 0.01, 0))
 	# Plaza with a fountain.
-	MeshUtil.cylinder(ground, 9, 9, 0.04, Color("b3a996"), Vector3(0, 0.02, 0))
+	MeshUtil.cylinder(ground, 9, 9, 0.04, Color("d6bf96"), Vector3(0, 0.02, 0))
 	MeshUtil.cylinder(ground, 3.2, 3.4, 0.6, Color("b0a898"), Vector3(0, 0.3, 0))
 	MeshUtil.cylinder(ground, 2.9, 2.9, 0.62, Color(0.35, 0.65, 0.95, 0.85), Vector3(0, 0.32, 0))
 	MeshUtil.cylinder(ground, 0.35, 0.5, 1.8, Color("b0a898"), Vector3(0, 0.9, 0))

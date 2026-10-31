@@ -196,17 +196,13 @@ func _build_preview() -> Control:
 	container.add_child(vp)
 
 	var env := WorldEnvironment.new()
-	var environment := Environment.new()
+	var environment := Lighting.environment(false)
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color("8ec5ff")
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("c8d8ff")
-	environment.ambient_light_energy = 0.6
 	env.environment = environment
 	vp.add_child(env)
-	var light := DirectionalLight3D.new()
+	var light := Lighting.sun()
 	light.rotation_degrees = Vector3(-35, 30, 0)
-	light.shadow_enabled = true
 	vp.add_child(light)
 	var floor_node := Node3D.new()
 	vp.add_child(floor_node)
