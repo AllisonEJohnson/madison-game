@@ -3,6 +3,8 @@ extends Node
 ## registers input actions so the project file stays small.
 
 const SAVE_PATH := "user://profile.json"
+const MAX_FAVORITES := 300
+const MAX_RECENT := 30
 
 var profile := {}
 
@@ -20,6 +22,9 @@ func default_profile() -> Dictionary:
 		"avatar": AvatarBuilder.default_config(),
 		"pet": PetBuilder.default_config(),
 		"house": FurnitureCatalog.starter_layout(),
+		# Build-mode keys ("sofa:3"). Only this device sees them.
+		"favorites": [],
+		"recent": [],
 	}
 
 
@@ -39,12 +44,41 @@ func load_profile() -> void:
 	profile["pet"] = pet
 	if data.get("house") is Array:
 		profile["house"] = House.sanitize_layout(data["house"])
+	profile["favorites"] = _clean_keys(data.get("favorites"), MAX_FAVORITES)
+	profile["recent"] = _clean_keys(data.get("recent"), MAX_RECENT)
 
 
 func save_profile() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(profile, "\t"))
+
+
+func set_favorite(key: String, on: bool) -> void:
+	var favorites: Array = profile["favorites"]
+	favorites.erase(key)
+	if on and favorites.size() < MAX_FAVORITES:
+		favorites.append(key)
+	save_profile()
+
+
+## Moves `key` to the front of the recently used list.
+func add_recent(key: String) -> void:
+	var recent: Array = profile["recent"]
+	recent.erase(key)
+	recent.push_front(key)
+	if recent.size() > MAX_RECENT:
+		recent.resize(MAX_RECENT)
+	save_profile()
+
+
+static func _clean_keys(data: Variant, limit: int) -> Array:
+	var out := []
+	if data is Array:
+		for key in data:
+			if key is String and key.length() <= 64 and not (key in out) and out.size() < limit:
+				out.append(key)
+	return out
 
 
 func display_name() -> String:

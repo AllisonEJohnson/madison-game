@@ -4,6 +4,8 @@ extends Node
 ## mouse on the grid, and edits are saved locally and sent to the host.
 
 signal layout_edited(layout: Array)
+## Sent after a successful placement with the entry key ("sofa:3").
+signal item_placed(key: String)
 
 const SEND_DELAY := 0.3
 
@@ -14,6 +16,8 @@ var item_id := "wall"
 var item_rotation := 0
 var item_color := Color.html(FurnitureCatalog.ITEMS["wall"]["color"])
 var item_style := 0
+## When on, a left click removes instead of placing.
+var erasing := false
 
 var _styles := {} # item id -> last style picked, so switching items keeps it
 
@@ -28,11 +32,24 @@ func set_active(on: bool) -> void:
 	_refresh_ghost()
 
 
-func select_item(id: String) -> void:
+## Picks what to place. A negative style keeps the last one used for the item.
+func select_item(id: String, style := -1) -> void:
+	if id != item_id:
+		item_color = Color.html(FurnitureCatalog.ITEMS[id]["color"])
 	item_id = id
-	item_color = Color.html(FurnitureCatalog.ITEMS[id]["color"])
-	item_style = _styles.get(id, 0)
+	item_style = style if style >= 0 else _styles.get(id, 0)
+	_styles[id] = item_style
+	erasing = false
 	_refresh_ghost()
+
+
+func set_erasing(on: bool) -> void:
+	erasing = on
+	_refresh_ghost()
+
+
+func rotate_item() -> void:
+	item_rotation = (item_rotation + 1) % 4
 
 
 ## Moves to the next (1) or previous (-1) look for the selected item.
@@ -56,6 +73,12 @@ func _refresh_ghost() -> void:
 		_ghost = null
 	if not active:
 		return
+	if erasing:
+		# A red tile marks the cell whose top-most piece will go.
+		_ghost = Node3D.new()
+		MeshUtil.box(_ghost, Vector3(0.96, 0.1, 0.96), Color(1.0, 0.3, 0.3, 0.55), Vector3(0, 0.08, 0))
+		house.add_child(_ghost)
+		return
 	_ghost = FurnitureCatalog.build(item_id, item_color.to_html(false), false, item_style)
 	# Models keep their look so the style can be seen; shapes take a tint.
 	MeshUtil.make_ghost(_ghost, Color(0.45, 0.85, 1.0, 0.5), FurnitureCatalog.has_art(item_id))
@@ -74,8 +97,13 @@ func _process(delta: float) -> void:
 	var normal := player.camera.project_ray_normal(mouse)
 	var hit = Plane(Vector3.UP, house.global_position.y).intersects_ray(origin, normal)
 	_cell = house.world_to_cell(hit) if hit != null else Vector2i(-1, -1)
+	# No ghost while the mouse is over a panel or button.
+	if player.get_viewport().gui_get_hovered_control() != null:
+		_cell = Vector2i(-1, -1)
 	_ghost.visible = _cell.x >= 0
-	if _ghost.visible:
+	if _ghost.visible and erasing:
+		_ghost.position = house.cell_center(_cell.x, _cell.y)
+	elif _ghost.visible:
 		_ghost.position = house.item_position(item_id, _cell.x, _cell.y, item_rotation)
 		_ghost.rotation_degrees.y = 90 * item_rotation
 
@@ -84,12 +112,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
 	if event.is_action_pressed("build_rotate"):
-		item_rotation = (item_rotation + 1) % 4
+		rotate_item()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _cell.x >= 0:
-			if house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
+			if erasing:
+				if house.remove_at(_cell.x, _cell.y):
+					_edited()
+			elif house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
 				_edited()
+				item_placed.emit("%s:%d" % [item_id, item_style])
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			# A short right click removes; a right drag still orbits the camera.
 			if event.pressed:

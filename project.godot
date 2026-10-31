@@ -13,6 +13,7 @@ config/icon="res://icon.svg"
 
 GameState="*res://autoload/game_state.gd"
 Net="*res://autoload/net.gd"
+Thumbs="*res://autoload/thumbs.gd"
 
 [display]
 
