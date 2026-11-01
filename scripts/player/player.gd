@@ -115,13 +115,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority():
 		return
 	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
-		_yaw -= event.relative.x * MOUSE_SENSITIVITY
-		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.2, 0.3)
+		look(-event.relative.x * MOUSE_SENSITIVITY, -event.relative.y * MOUSE_SENSITIVITY)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_arm.spring_length = maxf(_arm.spring_length - 0.5, 2.0)
+			zoom(-0.5)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_arm.spring_length = minf(_arm.spring_length + 0.5, 14.0)
+			zoom(0.5)
+
+
+## Turns the camera around the player (right-drag, or a finger on a touch screen).
+func look(yaw: float, pitch: float) -> void:
+	_yaw += yaw
+	_pitch = clampf(_pitch + pitch, -1.2, 0.3)
+
+
+## Moves the camera closer (negative) or further away, in meters.
+func zoom(meters: float) -> void:
+	_arm.spring_length = clampf(_arm.spring_length + meters, 2.0, 14.0)
+
+
+## Scales how far away the camera is (pinching on a touch screen).
+func zoom_by(factor: float) -> void:
+	_arm.spring_length = clampf(_arm.spring_length * factor, 2.0, 14.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -148,8 +163,9 @@ func _move_locally(delta: float) -> void:
 		velocity.y -= _gravity * delta
 	var dir := Vector3.ZERO
 	if input_enabled and not _typing():
-		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-		dir = (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y)).normalized()
+		# The touch joystick pushes softly or hard, so a small push walks.
+		var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back", 0.05)
+		dir = (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y)).limit_length(1.0)
 		if Input.is_action_just_pressed("jump") and is_on_floor():
 			velocity.y = JUMP_VELOCITY
 	velocity.x = dir.x * SPEED
@@ -158,7 +174,7 @@ func _move_locally(delta: float) -> void:
 	if position.y < -20.0:
 		position = Vector3(0, 2, 0)
 		velocity = Vector3.ZERO
-	if dir.length() > 0.1:
+	if dir.length() > 0.02:
 		_model.rotation.y = lerp_angle(_model.rotation.y, atan2(dir.x, dir.z), minf(12.0 * delta, 1.0))
 	sync_position = position
 	sync_yaw = _model.rotation.y

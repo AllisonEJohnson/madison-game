@@ -78,6 +78,8 @@ func _init(card_size := Vector2(96, 96)) -> void:
 	# Enter or Escape gives the keyboard back to the game.
 	_search.text_submitted.connect(func(_t): _search.release_focus())
 	header.add_child(_search)
+	_search.visible = not TouchInput.active
+	TouchInput.mode_changed.connect(_on_touch_mode)
 
 	_grid = ItemGrid.new()
 	_grid.card_size = card_size
@@ -90,6 +92,15 @@ func _init(card_size := Vector2(96, 96)) -> void:
 		if _category == FAVORITES:
 			_refresh(true))
 	main.add_child(_grid)
+
+
+## A phone's own keyboard can't open for the browser game, so the search box
+## hides while playing by touch (the category tabs and chips still find things).
+func _on_touch_mode(on: bool) -> void:
+	_search.visible = not on
+	if on and _search.text != "":
+		_search.text = ""
+		_refresh(false)
 
 
 func setup(categories: Array, entries: Array, start_category := "") -> void:

@@ -4,7 +4,9 @@ extends CanvasLayer
 ## Feed and Play buttons, a dock of big actions (chat, decorate, shop, home,
 ## help, leave), chat bubbles, build mode's catalog, the shop, the card that
 ## offers a nearby shop or game, and Star Chase's timer. Every action also has
-## a key, shown on its button, so the keyboard and the mouse both work.
+## a key, shown on its button, so the keyboard and the mouse both work. On a
+## touch screen the keys hide, and a joystick, a Jump button and looking around
+## by dragging take over (TouchControls).
 
 signal phrase_chosen(index: int)
 signal entry_chosen(id: String, style: int)
@@ -43,6 +45,16 @@ const HELP := [
 	["Walk", "chestnut", "Pick up acorns to spend"], ["Homes", "house_with_garden", "Move homes, add rooms"],
 	["E", "paw_prints", "Say hi to a wild pet"], ["Esc", "door", "Leave"],
 ]
+## The same, for playing on a touch screen.
+const TOUCH_HELP := [
+	["Joystick", "footprints", "Walk around"], ["Jump", "up_arrow", "Jump"],
+	["Drag", "eye", "Look around"], ["Pinch", "magnifying_glass_tilted_left", "Zoom in and out"],
+	["Feed", "meat_on_bone", "Feed your pet"], ["Play", "tennis", "Play with your pet"],
+	["Chat", "speech_balloon", "Say something"], ["Decorate", "couch_and_lamp", "Decorate your home"],
+	["Go home", "house", "Go inside your home"], ["Walk up", "shopping_bags", "Use a shop or game nearby"],
+	["Walk", "chestnut", "Pick up acorns to spend"], ["Homes", "house_with_garden", "Move homes, add rooms"],
+	["Walk up", "paw_prints", "Say hi to a wild pet"], ["Leave", "door", "Leave"],
+]
 ## Paints for furniture made from shapes (pieces without model styles).
 const HOUSE_COLORS := ["f1e7d6", "ffffff", "f7d9c4", "ffe8a3", "cdeac0", "bfe0f5", "d9c8f0", "f5c6d6",
 		"c9a77c", "9a6b42", "6b4a32", "b8b2a7", "3f4a5a", "e07a5f", "6fa8dc"]
@@ -51,6 +63,9 @@ const CHAT_FADE := 30.0
 
 var _root: Control
 var _scrim: ColorRect
+## The joystick, Jump button and looking around on touch screens (the world
+## listens to it).
+var touch: TouchControls
 var _player_card: PanelContainer
 var _player_pic: TextureRect
 var _player_name: Label
@@ -73,7 +88,10 @@ var _toast: PanelContainer
 var _toast_label: Label
 var _toast_time := 0.0
 var _phrases: PanelContainer
+var _phrase_hint: Label
 var _help: PanelContainer
+var _help_keys: Control
+var _help_touch: Control
 var _leave: PanelContainer
 var _build_bar: PanelContainer
 var _drawer: PanelContainer
@@ -96,7 +114,7 @@ var _shop: ShopPanel
 var _homes: HomesPanel
 var _build_title: Label
 var _build_count: Label
-var _build_tips: Array[Control] = [] # key tips in the banner, hidden when it's too wide
+var _build_tips: Array[Control] = [] # key or touch tips in the banner, hidden when it's too wide
 var _prompt: PanelContainer
 var _prompt_icon: TextureRect
 var _prompt_title: Label
@@ -129,6 +147,7 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.theme = UiTheme.theme()
 	add_child(_root)
+	_build_touch()
 	_build_player_card()
 	_build_pet_card()
 	_build_dock()
@@ -140,7 +159,8 @@ func _ready() -> void:
 	_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_scrim.visible = false
 	_scrim.gui_input.connect(func(event):
-		if event is InputEventMouseButton and event.pressed:
+		# A touch too: a second finger (say, while walking) doesn't act as a mouse.
+		if (event is InputEventMouseButton or event is InputEventScreenTouch) and event.pressed:
 			close_popups())
 	_root.add_child(_scrim)
 	_phrases = _build_phrases()
@@ -166,6 +186,8 @@ func _ready() -> void:
 			_priced_level = Progress.level()
 			_refresh_prices())
 	Progress.leveled_up.connect(func(level, rewards): _pending_levels.append([level, rewards]))
+	TouchInput.mode_changed.connect(_on_touch_mode)
+	_on_touch_mode(TouchInput.active)
 
 
 # --- Cards ---------------------------------------------------------------------
@@ -316,6 +338,34 @@ func _build_chat() -> void:
 	_root.add_child(_chat_box)
 
 
+## Chat lines rise from beside the dock, or from above the joystick when
+## playing by touch.
+func _place_chat() -> void:
+	if not _chat_box:
+		return
+	var lift := 120.0
+	if TouchInput.active and touch.size.y > 0.0:
+		lift = maxf(lift, touch.size.y - touch.reserved_top())
+	_chat_box.offset_top = -lift
+	_chat_box.offset_bottom = -lift
+
+
+func _build_touch() -> void:
+	touch = TouchControls.new()
+	_root.add_child(touch)
+	touch.resized.connect(_place_chat)
+
+
+## Swaps key hints for touch hints, or back.
+func _on_touch_mode(on: bool) -> void:
+	_help_keys.visible = not on
+	_help_touch.visible = on
+	_phrase_hint.text = "Everyone sees these friendly phrases." if on \
+			else "Everyone sees these friendly phrases. Press T to open this any time."
+	_place_chat()
+	_fit_build_bar()
+
+
 func _build_toast() -> void:
 	_toast = _place(UiTheme.card(&"Banner"), Control.PRESET_CENTER_TOP, Vector2(0, 110))
 	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -363,19 +413,31 @@ func _build_phrases() -> PanelContainer:
 			_show_only(null)
 			phrase_chosen.emit(i))
 		grid.add_child(b)
-	var hint := UiTheme.label("Everyone sees these friendly phrases. Press T to open this any time.", &"Hint")
-	box.add_child(hint)
+	_phrase_hint = UiTheme.label("", &"Hint")
+	box.add_child(_phrase_hint)
 	return box.get_parent()
 
 
 func _build_help() -> PanelContainer:
 	var box := _dialog("How to play", "red_question_mark")
+	_help_keys = _help_grid(HELP)
+	box.add_child(_help_keys)
+	_help_touch = _help_grid(TOUCH_HELP)
+	box.add_child(_help_touch)
+	var ok := UiTheme.button("Got it!", "thumbs_up", &"PrimaryButton")
+	ok.add_theme_font_size_override("font_size", 22)
+	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ok.pressed.connect(func(): _show_only(null))
+	box.add_child(ok)
+	return box.get_parent()
+
+
+func _help_grid(rows: Array) -> GridContainer:
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 28)
 	grid.add_theme_constant_override("v_separation", 10)
-	box.add_child(grid)
-	for row in HELP:
+	for row in rows:
 		var line := UiTheme.hbox(10)
 		line.custom_minimum_size.x = 300
 		var key := UiTheme.label(row[0], &"KeyBadge", 15)
@@ -386,12 +448,7 @@ func _build_help() -> PanelContainer:
 		line.add_child(UiTheme.texture_rect(UiTheme.icon(row[1]), 30))
 		line.add_child(UiTheme.label(row[2]))
 		grid.add_child(line)
-	var ok := UiTheme.button("Got it!", "thumbs_up", &"PrimaryButton")
-	ok.add_theme_font_size_override("font_size", 22)
-	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	ok.pressed.connect(func(): _show_only(null))
-	box.add_child(ok)
-	return box.get_parent()
+	return grid
 
 
 func _build_leave() -> PanelContainer:
@@ -467,14 +524,17 @@ func set_build_home(home_name: String, count: int, capacity: int) -> void:
 
 
 ## Keeps the decorating banner centered and on screen: on a narrow window the
-## key tips go, last first.
+## tips go, last first. Key tips show for keys, touch tips for touch.
 func _fit_build_bar() -> void:
+	if not _build_bar:
+		return
+	var tips := _build_tips.filter(func(tip): return tip.get_meta("touch") == TouchInput.active)
 	for tip in _build_tips:
-		tip.visible = true
-	for i in range(_build_tips.size() - 1, -1, -1):
+		tip.visible = tip.get_meta("touch") == TouchInput.active
+	for i in range(tips.size() - 1, -1, -1):
 		if _build_bar.get_combined_minimum_size().x <= _root.size.x - 32:
 			break
-		_build_tips[i].visible = false
+		tips[i].visible = false
 	var width := _build_bar.get_combined_minimum_size().x
 	_build_bar.offset_left = -width / 2
 	_build_bar.offset_right = width / 2
@@ -637,8 +697,10 @@ func _build_build_mode() -> void:
 	_build_count.tooltip_text = "Things in your home, and how many fit. Add rooms to fit more."
 	_build_count.mouse_filter = Control.MOUSE_FILTER_PASS
 	bar.add_child(_build_count)
-	for tip in [["Click", "place"], ["Right-click", "remove"], ["R", "turn"], ["E", "next look"]]:
+	for tip in [["Click", "place"], ["Right-click", "remove"], ["R", "turn"], ["E", "next look"],
+			["Tap", "place", true], ["Drag", "look", true], ["Pinch", "zoom", true]]:
 		var pair := UiTheme.hbox(5)
+		pair.set_meta("touch", tip.size() > 2)
 		var key := UiTheme.label(tip[0], &"KeyBadge", 13)
 		key.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		key.add_theme_stylebox_override("normal", UiTheme.box(Color(1, 1, 1, 0.22), 7, 0, Color.TRANSPARENT,
@@ -809,6 +871,8 @@ func _tuck(on: bool) -> void:
 	_tucked = on
 	_drawer.visible = _build_bar.visible and not on
 	_peek.visible = _build_bar.visible and on
+	# The catalog covers the joystick's corner; tucked away, you can walk again.
+	touch.walk_enabled = not _drawer.visible
 
 
 func _item_thumb(id: String, style: int) -> Texture2D:
@@ -863,7 +927,7 @@ func _buy_picked() -> void:
 		_shop.pick(shop_key)
 		return
 	if GameState.buy(shop_key):
-		toast("It's yours! Click your home to place it.")
+		toast("It's yours! %s your home to place it." % ("Tap" if TouchInput.active else "Click"))
 
 
 ## Called when placing something not bought yet.
@@ -910,6 +974,8 @@ func _show_only(card: Control) -> void:
 	for c in _cards():
 		c.visible = c == card and not c.visible
 	_scrim.visible = _cards().any(func(c): return c.visible)
+	if _scrim.visible:
+		touch.release_all()
 
 
 func _cards() -> Array:
@@ -1063,6 +1129,7 @@ func close_popups() -> bool:
 
 func show_build(active: bool) -> void:
 	_build_bar.visible = active
+	touch.jump_enabled = not active
 	_tuck(_tucked)
 	for card in [_dock, _pet_card, _player_card, _chat_box]:
 		card.visible = not active

@@ -462,6 +462,8 @@ func _owned_only(config: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 
 func _play() -> void:
 	GameState.save_profile()
+	# On a phone, the game fills the screen sideways where the browser allows it.
+	TouchInput.fill_screen()
 	Net.request_host(int(_port.value))
 
 

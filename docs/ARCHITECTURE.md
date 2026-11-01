@@ -9,6 +9,7 @@ autoload/
   progress.gd        The player's level: XP from playing, level-up rewards, locked places, Star Boost
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
   thumbs.gd          Renders small pictures of models for buttons and catalog cards (see "UI")
+  touch_input.gd     Touch mode on or off, thumb-sized measurements, "turn your phone sideways", filling the screen
 assets/
   kaykit_forest/     Trees, bushes, rocks and grass from the free KayKit Forest pack (CC0; see "Art")
   ui/fonts/          Fredoka (headings) and Nunito (text), variable fonts, SIL Open Font License
@@ -42,6 +43,7 @@ scripts/
   ui/item_grid.gd             Paged grid of picture cards with favorite stars and price tags
   ui/catalog_browser.gd       Category rail + group chips + search + Favorites/Recent around an ItemGrid
   ui/swatch_row.gd            Color swatches plus a rainbow button for any color
+  ui/touch_controls.gd        Touch screens: joystick, Jump button, drag to look, pinch to zoom, tap
   ui/main_menu.gd             Character creator, pet picker, name picker and play buttons
   ui/hud.gd                   In-world UI: player and pet cards (with wallet), dock, chat, dialogs, build drawer,
                               shop, the "press E" prompt and Star Chase's banner and result
@@ -138,6 +140,36 @@ else its tab's) sets both the thumbnail angle and where the preview camera zooms
 for the art avatar's bigger head. Half of an art avatar's height is its head, so the general framing
 rules in `Thumbs` would miss; instead the avatar carries a `thumb_boxes` meta (view to AABB) that says
 where its face, head, torso, legs and feet are, and any model can do the same.
+
+## Touch screens
+
+`TouchInput` (an autoload) decides whether touch controls show. Touch mode is on from the start on phones and
+tablets (a touch screen plus an Android, iOS or Mac browser, since iPads say they're Macs); on other screens it
+turns on with the first touch and off with a key press, so a touch-screen laptop gets whichever fits. It emits
+`mode_changed`, and every key badge (`UiTheme.add_key_badge`) sits in the `key_badges` group, which hides while
+touch mode is on. Run with `-- --touch` to force it on, for example for screenshots.
+
+`TouchControls` sits at the bottom of the HUD, under every card, and only reads touches that no button or card
+took (`_unhandled_input`). A finger put down on the left half of the screen becomes the joystick, which floats
+to that spot and presses the same `move_*` actions as the keys with a strength from 0 to 1, so the player walks
+slowly or runs (`Player` no longer normalizes the move vector). Anywhere else, one finger turns the camera
+(`look`), two pinch to zoom (`zoomed`), and a short press that doesn't move is a tap (`pressed_at`, then
+`tapped` or `press_ended`). The world sends taps to `BuildController.tap_at`, which places or removes, and
+shows the ghost under the finger meanwhile; the pretend mouse clicks Godot makes from touches are ignored there
+so a drag to look around never drops furniture. Once a finger is walking or looking, its drags are taken in
+`_input`, before the interface, so it keeps going when it slides over a button. Jump is its own control that
+reads touches directly, because a second finger never acts as a mouse (Godot's buttons handle touches
+themselves, so the dock still works while walking).
+
+Sizes are in screen points (`TouchInput.points_per_unit()`), so the joystick stays thumb-sized on a phone,
+where the 1280 x 720 layout is shrunk to about half, and on a tablet. Two browser quirks matter: a drag's
+`relative` is unreliable while two fingers are down (the web platform tracks it by slot, not by finger), so
+each finger's own last position is used; and `requestFullscreen` only works during a tap, which is why
+`fill_screen()` runs from the Play button. The catalog's search box hides in touch mode, because the browser
+game can't open a phone's keyboard.
+
+The game's windows are made for a wide screen, so a phone held upright (narrower than 600 points) gets a card
+asking to turn it sideways, scaled up to stay readable. "Play this way" waves it away for the session.
 
 ## Art
 

@@ -132,6 +132,16 @@ func _ready() -> void:
 		_show_build_selection())
 	_hud.rotate_pressed.connect(_build.rotate_item)
 	_hud.erase_toggled.connect(_build.set_erasing)
+	# Touch screens: look around and zoom with fingers; tap to place while decorating.
+	_hud.touch.look.connect(func(yaw, pitch):
+		if local_player:
+			local_player.look(yaw, pitch))
+	_hud.touch.zoomed.connect(func(factor):
+		if local_player:
+			local_player.zoom_by(factor))
+	_hud.touch.pressed_at.connect(_build.preview_at)
+	_hud.touch.press_ended.connect(_build.end_preview)
+	_hud.touch.tapped.connect(_build.tap_at)
 
 	Net.status_changed.connect(_hud.set_status)
 	Net.connection_ready.connect(_on_connection_ready)
@@ -241,7 +251,8 @@ func _setup_local_player(player: Player) -> void:
 	_build.player = player
 	if plot >= 0:
 		plots[plot].sign_zone.enabled = true
-		_hud.toast("Welcome, %s! Your home is plot %d. Press Home to go inside." % [player.display_name, plot + 1])
+		_hud.toast("Welcome, %s! Your home is plot %d. %s Go home to go inside." % [player.display_name, plot + 1,
+				"Tap" if TouchInput.active else "Press"])
 	else:
 		_hud.toast("Welcome! The neighborhood is full, so you are visiting today.")
 	Progress.award("daily")
@@ -678,6 +689,10 @@ func _toggle_build() -> void:
 	_build.set_active(not _build.active)
 	_hud.show_build(_build.active)
 	_show_build_selection()
+	# On a touch screen, look down into the home so a tap can place things
+	# right away (the catalog covers the bottom of the screen).
+	if _build.active and TouchInput.active and local_player:
+		local_player.set_camera_view(-0.95, 9.0)
 
 
 func _show_build_selection() -> void:

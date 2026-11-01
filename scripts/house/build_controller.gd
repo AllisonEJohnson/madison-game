@@ -2,7 +2,9 @@ class_name BuildController
 extends Node
 ## Lets the local player decorate the inside of their own home (`house`, set
 ## while they're in it): a ghost preview follows the mouse on the grid, and
-## edits are saved locally and sent to the host.
+## edits are saved locally and sent to the host. On a touch screen there's no
+## mouse to follow, so the ghost shows under a finger while it's down and a tap
+## places (see `preview_at` and `tap_at`, fed by TouchControls).
 
 signal layout_edited(layout: Array)
 ## Sent after a successful placement with the entry key ("sofa:3").
@@ -28,6 +30,7 @@ var _styles := {} # item id -> last style picked, so switching items keeps it
 
 var _ghost: Node3D
 var _cell := Vector2i(-1, -1)
+var _touch_at := Vector2.INF # Where a finger is down on the home, on a touch screen.
 var _right_press := Vector2.ZERO
 var _send_timer := -1.0
 
@@ -107,14 +110,13 @@ func _process(delta: float) -> void:
 			layout_edited.emit(Homes.items(Homes.current()).duplicate(true))
 	if not active or not player.camera:
 		return
-	var mouse := player.get_viewport().get_mouse_position()
-	var origin := player.camera.project_ray_origin(mouse)
-	var normal := player.camera.project_ray_normal(mouse)
-	var hit = Plane(Vector3.UP, house.global_position.y).intersects_ray(origin, normal)
-	_cell = house.world_to_cell(hit) if hit != null else Vector2i(-1, -1)
-	# No ghost while the mouse is over a panel or button.
-	if player.get_viewport().gui_get_hovered_control() != null:
-		_cell = Vector2i(-1, -1)
+	if TouchInput.active:
+		_cell = _cell_at(_touch_at) if _touch_at != Vector2.INF else Vector2i(-1, -1)
+	else:
+		_cell = _cell_at(player.get_viewport().get_mouse_position())
+		# No ghost while the mouse is over a panel or button.
+		if player.get_viewport().gui_get_hovered_control() != null:
+			_cell = Vector2i(-1, -1)
 	_ghost.visible = _cell.x >= 0
 	if _ghost.visible and erasing:
 		_ghost.position = house.cell_center(_cell.x, _cell.y)
@@ -123,24 +125,56 @@ func _process(delta: float) -> void:
 		_ghost.rotation_degrees.y = 90 * item_rotation
 
 
+## The grid cell under a point on the screen, or (-1, -1).
+func _cell_at(screen: Vector2) -> Vector2i:
+	var origin := player.camera.project_ray_origin(screen)
+	var normal := player.camera.project_ray_normal(screen)
+	var hit = Plane(Vector3.UP, house.global_position.y).intersects_ray(origin, normal)
+	return house.world_to_cell(hit) if hit != null else Vector2i(-1, -1)
+
+
+## A finger is down here: show the ghost under it.
+func preview_at(screen: Vector2) -> void:
+	_touch_at = screen
+
+
+func end_preview() -> void:
+	_touch_at = Vector2.INF
+
+
+## A tap on the home places the picked piece there (or removes, when erasing).
+func tap_at(screen: Vector2) -> void:
+	_touch_at = Vector2.INF
+	if active and player.camera:
+		_use_cell(_cell_at(screen))
+
+
+func _use_cell(cell: Vector2i) -> void:
+	if cell.x < 0:
+		return
+	if erasing:
+		if house.remove_at(cell.x, cell.y):
+			_edited()
+	elif not owns_item():
+		purchase_needed.emit(item_id, item_style)
+	elif house.is_full_for(item_id, cell.x, cell.y, item_rotation):
+		home_full.emit()
+	elif house.place(item_id, cell.x, cell.y, item_rotation, item_color.to_html(false), item_style):
+		_edited()
+		item_placed.emit("%s:%d" % [item_id, item_style])
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
 	if event.is_action_pressed("build_rotate"):
 		rotate_item()
 		get_viewport().set_input_as_handled()
-	elif event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and _cell.x >= 0:
-			if erasing:
-				if house.remove_at(_cell.x, _cell.y):
-					_edited()
-			elif not owns_item():
-				purchase_needed.emit(item_id, item_style)
-			elif house.is_full_for(item_id, _cell.x, _cell.y, item_rotation):
-				home_full.emit()
-			elif house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
-				_edited()
-				item_placed.emit("%s:%d" % [item_id, item_style])
+	# Taps come through tap_at instead of the pretend mouse a touch also makes,
+	# so dragging to look around doesn't drop things.
+	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION:
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and player.camera:
+			_use_cell(_cell_at(event.position))
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			# A short right click removes; a right drag still orbits the camera.
 			if event.pressed:

@@ -279,12 +279,9 @@ func _rooms_and_room_left() -> void:
 	_world._build.home_full.connect(func(): full_said[0] = true, CONNECT_ONE_SHOT)
 	_check("swapping a piece still works when full", house.place("lamp", spots[0].x, spots[0].y, 0, "ffffff"))
 	_world._build.set_active(true)
-	_world._build._cell = free_cell
-	var click := InputEventMouseButton.new()
-	click.button_index = MOUSE_BUTTON_LEFT
-	click.pressed = true
 	_world._build.select_item("plant", 0)
-	_world._build._unhandled_input(click)
+	# What a click or a tap on that cell does.
+	_world._build._use_cell(free_cell)
 	_check("decorating a full home says so", full_said[0])
 	_world._build.set_active(false)
 	GameState.profile["owned"].append("furniture:piano:1")
