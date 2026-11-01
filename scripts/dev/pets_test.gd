@@ -143,15 +143,12 @@ func _switching() -> void:
 
 
 func _admin() -> void:
-	var console := AdminConsole.new()
-	add_child(console)
-	console.run(PackedStringArray(["pets", "all"]))
+	AdminConsole.run(PackedStringArray(["pets", "all"]))
 	_check("admin: pets all", PetCollection.found_count() == PetCollection.wild_kinds().size())
 	PetCollection.switch_to("pegasus", GameState.profile["pet"])
-	console.run(PackedStringArray(["pets", "reset"]))
+	AdminConsole.run(PackedStringArray(["pets", "reset"]))
 	_check("admin: pets reset (the pegasus with you goes home)", PetCollection.found_count() == 0
 			and PetCollection.active_species() == "cat")
-	console.queue_free()
 
 
 func _lands() -> void:

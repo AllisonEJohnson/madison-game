@@ -55,8 +55,11 @@ show a "turn your phone sideways" card instead).
 Walk into the glowing portal west of the plaza to visit **Starfall Glade** (it opens at level 2), and through
 its portal to come back. Tap the star on your player card to see your level and what's next.
 
-**Admin console** (for the game's makers): press <kbd>`</kbd> (left of 1) to open it. It only exists when
-running from the editor or with `godot --path . -- --admin`. `stardust 500` grants premium currency,
+**Admin tools** (for the game's makers): on a tablet or phone, open **Help** and tap **Admin tools** for
+every command below as buttons, with numbers picked by - and + instead of typing. With a keyboard, press
+<kbd>`</kbd> (left of 1) for the admin console. For now both are on for everyone, the website included;
+setting `FOR_EVERYONE` to false in `scripts/ui/admin_console.gd` keeps them to running from the editor or
+`godot --path . -- --admin`. In the console, `stardust 500` grants premium currency,
 `acorns 500` grants earned currency, `member 30` adds 30 days of membership, `unlock all` owns everything in
 the shop, every home and every room (`unlock reset` takes it back, except what you wear or have placed and
 the home you live in with its rooms), `wallet` shows balances,

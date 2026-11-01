@@ -1,8 +1,10 @@
 class_name AdminConsole
 extends CanvasLayer
 ## A small command box for the game's makers, opened with the ` key (the one
-## left of 1). It only exists in debug builds (running from the editor) or
-## when the game is started with `--admin`, so players never see it:
+## left of 1). The same commands are buttons in AdminPanel (from the Help
+## card), for tablets and phones. Both only exist while enabled(): for now that
+## is everyone (FOR_EVERYONE), and with it off only debug builds (running from
+## the editor) or a game started with `--admin`:
 ##   godot --path . -- --admin
 ## Commands change this device's save only. Once a game server holds the
 ## wallets, granting moves to a server-side admin tool.
@@ -22,6 +24,10 @@ const HELP := [
 	"pets reset          forget every wild pet you found",
 	"help                show this list",
 ]
+## While the game is being made, admin tools are on for everyone, including
+## the website build, so makers can reach them from a tablet. Set this to
+## false to keep them to debug builds and `--admin`, before real players come.
+const FOR_EVERYONE := true
 const MAX_AMOUNT := 1_000_000
 const LOG_LINES := 12
 
@@ -32,7 +38,7 @@ var _lines: Array[String] = []
 
 
 static func enabled() -> bool:
-	return OS.is_debug_build() or "--admin" in OS.get_cmdline_user_args()
+	return FOR_EVERYONE or OS.is_debug_build() or "--admin" in OS.get_cmdline_user_args()
 
 
 func _ready() -> void:
@@ -91,8 +97,9 @@ func _on_submitted(text: String) -> void:
 	_print(run(words))
 
 
-## Runs one command and returns what to show. Public so tests can call it.
-func run(words: PackedStringArray) -> String:
+## Runs one command and returns what to show. AdminPanel's buttons and the
+## tests call it too.
+static func run(words: PackedStringArray) -> String:
 	var command := words[0]
 	var arg := words[1] if words.size() > 1 else ""
 	match command:
@@ -159,7 +166,7 @@ func run(words: PackedStringArray) -> String:
 	return "Unknown command. Type help for the list."
 
 
-func _level_text() -> String:
+static func _level_text() -> String:
 	var p := Progress.progress()
 	var boost := Progress.boost_seconds_left()
 	return "Level %d, %s, %d XP in all%s" % [p["level"],
@@ -167,7 +174,7 @@ func _level_text() -> String:
 			Progress.xp(), ", Star Boost for %d min" % ceili(boost / 60.0) if boost > 0 else ""]
 
 
-func _wallet_text() -> String:
+static func _wallet_text() -> String:
 	var days := GameState.member_days_left()
 	return "Acorns %d, Stardust %d, %s, %d things bought" % [GameState.balance("acorns"),
 			GameState.balance("stardust"),

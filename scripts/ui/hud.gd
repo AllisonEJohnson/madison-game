@@ -90,6 +90,8 @@ var _toast_time := 0.0
 var _phrases: PanelContainer
 var _phrase_hint: Label
 var _help: PanelContainer
+## Admin tools as buttons, opened from the Help card (see AdminPanel).
+var _admin: AdminPanel
 var _help_keys: Control
 var _help_touch: Control
 var _leave: PanelContainer
@@ -165,6 +167,9 @@ func _ready() -> void:
 	_root.add_child(_scrim)
 	_phrases = _build_phrases()
 	_help = _build_help()
+	_admin = _place(AdminPanel.new(), Control.PRESET_CENTER, Vector2.ZERO)
+	_admin.visible = false
+	_admin.closed.connect(func(): _show_only(null))
 	_leave = _build_leave()
 	_result = _build_result()
 	_build_level_cards()
@@ -424,12 +429,27 @@ func _build_help() -> PanelContainer:
 	box.add_child(_help_keys)
 	_help_touch = _help_grid(TOUCH_HELP)
 	box.add_child(_help_touch)
+	var row := UiTheme.hbox(12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(row)
+	# Makers reach the admin tools here on a tablet, where there's no ` key.
+	if AdminConsole.enabled():
+		var admin := UiTheme.button("Admin tools", "hammer_and_wrench")
+		admin.custom_minimum_size.y = 56
+		admin.add_theme_font_size_override("font_size", 18)
+		admin.add_theme_constant_override("icon_max_width", 28)
+		admin.pressed.connect(open_admin)
+		row.add_child(admin)
 	var ok := UiTheme.button("Got it!", "thumbs_up", &"PrimaryButton")
 	ok.add_theme_font_size_override("font_size", 22)
-	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ok.pressed.connect(func(): _show_only(null))
-	box.add_child(ok)
+	row.add_child(ok)
 	return box.get_parent()
+
+
+func open_admin() -> void:
+	if not _admin.visible:
+		_show_only(_admin)
 
 
 func _help_grid(rows: Array) -> GridContainer:
@@ -979,7 +999,7 @@ func _show_only(card: Control) -> void:
 
 
 func _cards() -> Array:
-	return [_phrases, _help, _leave, _result, _shop, _homes, _level_card, _level_up, pets_panel, adopt_card]
+	return [_phrases, _help, _admin, _leave, _result, _shop, _homes, _level_card, _level_up, pets_panel, adopt_card]
 
 
 func _process(delta: float) -> void:
