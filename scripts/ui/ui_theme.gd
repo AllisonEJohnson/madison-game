@@ -351,8 +351,11 @@ static func icon_button(icon_name: String, tooltip: String, size := 64, key := "
 	return b
 
 
+## Badges hide while playing by touch (see TouchInput).
 static func add_key_badge(control: Control, key: String) -> void:
 	var badge := label(key, &"KeyBadge")
+	badge.add_to_group(&"key_badges")
+	badge.visible = not TouchInput.active
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN

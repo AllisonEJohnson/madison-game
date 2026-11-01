@@ -12,7 +12,8 @@ Style your character, build and decorate your own home, and bring your pet every
 **https://allisonejohnson.github.io/madison-game/**
 
 The browser version is rebuilt and published automatically every time `main` changes
-(see [.github/workflows/web.yml](.github/workflows/web.yml)). It needs a keyboard and mouse, and it plays solo:
+(see [.github/workflows/web.yml](.github/workflows/web.yml)). It works with a keyboard and mouse, or by touch on
+phones and tablets (best with the phone held sideways), and it plays solo:
 browsers can't use the network connection that online play needs, so playing with friends needs the
 downloaded game below. Your character, pet and home are saved in the browser.
 
@@ -43,6 +44,13 @@ Everything has a big on-screen button too, with its key shown in a small badge, 
 | Shop button | Open the shop (or click your wallet) |
 | Homes button | Buy homes, move into one, or add rooms (also from the decorating banner's Rooms button) |
 | Esc | Close a window, then stop decorating, then ask before leaving the world |
+
+**On a phone or tablet**, the keys hide and touch controls take over: a joystick in the bottom-left corner to
+walk (push a little to walk, all the way to run), a big **Jump** button in the bottom-right, one finger dragged
+anywhere else to look around, and two fingers pinched to zoom. Every other action is its on-screen button. While
+decorating, tap your home to place the piece you picked (with the wastebasket on, a tap removes one). Tapping
+**Play!** on a phone fills the screen and keeps it sideways where the browser allows it (Android does; iPhones
+show a "turn your phone sideways" card instead).
 
 Walk into the glowing portal west of the plaza to visit **Starfall Glade** (it opens at level 2), and through
 its portal to come back. Tap the star on your player card to see your level and what's next.

@@ -15,6 +15,7 @@ GameState="*res://autoload/game_state.gd"
 Progress="*res://autoload/progress.gd"
 Net="*res://autoload/net.gd"
 Thumbs="*res://autoload/thumbs.gd"
+TouchInput="*res://autoload/touch_input.gd"
 
 [display]
 
