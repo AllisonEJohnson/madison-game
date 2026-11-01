@@ -28,7 +28,6 @@ const CHASE_FIELD := Vector3(0, 0, 22)
 const SHOP_STALL := Vector3(-7, 0, 31)
 
 const GRASS := Color("74cf8e")
-const PATH := Color("efdcc0")
 const PLAZA_STONE := Color("e6d7f2")
 
 const DIR := "Fantasy/prefabs/assets/"
@@ -94,27 +93,6 @@ const WALKERS := [
 	["animals/fantasy_animal_003", POND, 14.0, 1.9, 0.8, -26.0],
 	["animals/fantasy_animal_007", Vector3(-36, 0, -24), 6.0, 2.0, -1.2, 90.0],
 ]
-const WATER_SHADER := """
-shader_type spatial;
-render_mode cull_disabled;
-uniform vec4 deep : source_color = vec4(0.18, 0.45, 0.9, 1.0);
-uniform vec4 shallow : source_color = vec4(0.5, 0.9, 0.95, 1.0);
-uniform float radius = 9.0;
-varying vec3 world;
-varying float edge;
-void vertex() {
-	world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	edge = length(VERTEX.xz) / radius;
-}
-void fragment() {
-	float ripple = sin(world.x * 1.7 + TIME * 1.3) * sin(world.z * 1.3 - TIME * 1.1);
-	ripple += 0.5 * sin((world.x + world.z) * 3.1 - TIME * 2.0);
-	vec3 col = mix(deep.rgb, shallow.rgb, smoothstep(0.55, 1.0, edge));
-	ALBEDO = col + ripple * 0.04;
-	ROUGHNESS = 0.12;
-	SPECULAR = 0.8;
-}
-"""
 
 var portal: Portal
 var chase: StarChase
@@ -191,15 +169,18 @@ func _process(delta: float) -> void:
 # --- Ground, paths and edges ------------------------------------------------------
 
 func _ground() -> void:
-	MeshUtil.box(self, Vector3(260, 1, 260), GRASS, Vector3(0, -0.5, 0))
+	var grass := MeshUtil.box(self, Vector3(260, 1, 260), GRASS, Vector3(0, -0.5, 0))
 	MeshUtil.collider(self, Vector3(260, 1, 260), Vector3(0, -0.5, 0))
-	# Paths from the portal to the plaza, and from there to each area.
-	MeshUtil.box(self, Vector3(4, 0.02, PORTAL_SPOT.z - PLAZA.z), PATH, Vector3(0, 0.01, (PORTAL_SPOT.z + PLAZA.z) / 2))
-	MeshUtil.box(self, Vector3(4, 0.02, PLAZA.z - CASTLE_Z - 14), PATH, Vector3(0, 0.01, (PLAZA.z + CASTLE_Z + 14) / 2))
-	MeshUtil.box(self, Vector3(absf(VILLAGE.x) - 6, 0.02, 3.5), PATH, Vector3(VILLAGE.x / 2 - 3, 0.01, VILLAGE.z))
-	MeshUtil.box(self, Vector3(POND.x - POND_RADIUS - 2, 0.02, 3.5), PATH, Vector3((POND.x - POND_RADIUS) / 2, 0.01, POND.z))
-	MeshUtil.cylinder(self, 10, 10, 0.04, PLAZA_STONE, PLAZA + Vector3(0, 0.02, 0))
-	MeshUtil.cylinder(self, 8, 8, 0.03, PATH, VILLAGE + Vector3(0, 0.02, 0))
+	# Paths from the portal to the plaza, and from there to each area, worn
+	# into the grass (see Surfaces), with a clearing for the village.
+	Surfaces.ground(grass, Surfaces.GLADE_GROUND, [
+		Surfaces.strip(Vector3(4, 0, PORTAL_SPOT.z - PLAZA.z), Vector3(0, 0, (PORTAL_SPOT.z + PLAZA.z) / 2)),
+		Surfaces.strip(Vector3(4, 0, PLAZA.z - CASTLE_Z - 14), Vector3(0, 0, (PLAZA.z + CASTLE_Z + 14) / 2)),
+		Surfaces.strip(Vector3(absf(VILLAGE.x) - 6, 0, 3.5), Vector3(VILLAGE.x / 2 - 3, 0, VILLAGE.z)),
+		Surfaces.strip(Vector3(POND.x - POND_RADIUS - 2, 0, 3.5), Vector3((POND.x - POND_RADIUS) / 2, 0, POND.z)),
+		Vector3(VILLAGE.x, VILLAGE.z, 8),
+	])
+	Surfaces.paving(MeshUtil.cylinder(self, 10, 10, 0.04, PLAZA_STONE, PLAZA + Vector3(0, 0.02, 0)), 10, Surfaces.GLADE_PAVING)
 	# Invisible walls at the edge; trees and mountains hide them.
 	for side in [-1.0, 1.0]:
 		MeshUtil.collider(self, Vector3(HALF * 2, 12, 1), Vector3(0, 6, side * HALF))
@@ -215,12 +196,7 @@ func _pond(fancy: bool) -> void:
 	disc.radial_segments = 48
 	disc.rings = 1
 	water.mesh = disc
-	var shader := Shader.new()
-	shader.code = WATER_SHADER
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
-	mat.set_shader_parameter("radius", POND_RADIUS)
-	water.material_override = mat
+	Surfaces.water(water, POND_RADIUS)
 	water.position = POND + Vector3(0, 0.05, 0)
 	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(water)

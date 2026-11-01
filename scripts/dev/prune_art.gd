@@ -1,6 +1,7 @@
 extends SceneTree
 ## Deletes every licensed art file the game doesn't use, so the web build only
-## carries what it needs. CI runs it on a fresh checkout of the art, before
+## carries what it needs, and adjusts a few import settings (see
+## IMPORT_SETTINGS). CI runs it on a fresh checkout of the art, before
 ## importing it:
 ##   godot --headless -s scripts/dev/prune_art.gd
 ## It deletes files, so don't run it on an art folder you want to keep.
@@ -14,6 +15,9 @@ func _init() -> void:
 	for path in FurnitureCatalog.art_paths() + PetBuilder.art_paths() + Scenery.art_paths() + AvatarBuilder.art_paths() \
 			+ FantasyLand.art_paths() + ShopStall.art_paths() + SkyGarden.art_paths():
 		_keep(Art.ROOT + path + ".tscn", keep)
+	for path in Lighting.sky_paths():
+		_keep(Art.ROOT + path, keep)
+	_tune_imports()
 	var removed := _prune(Art.ROOT, keep)
 	_trim_animations(Art.ROOT + CharacterParts.ANIMATIONS, CharacterParts.CLIPS.values())
 	print("[prune_art] kept %d files, removed %d, missing %d" % [keep.size(), removed, _missing])
@@ -49,6 +53,33 @@ func _prune(dir_path: String, keep: Dictionary) -> int:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 			removed += 1
 	return removed
+
+
+## Import settings that suit the web build better than the packs' own, set
+## before the import that follows:
+## - The models are colored from small palette pictures of smooth gradients.
+##   Graphics-card compression adds a blotchy grain to those, and they're
+##   smaller in the download kept lossless.
+## - The sky comes as a 4096 x 2048 lossless picture (about 5 MB); a
+##   2048 x 1024 lossy one looks the same as a backdrop and is far smaller.
+const IMPORT_SETTINGS := {
+	"Fantasy/textures/Demonstration_Textures1.png": {"compress/mode": 0},
+	"Animals/textures/Demonstration_ColorPalette_1.png": {"compress/mode": 0},
+	"Animals/textures/Demonstration_ColorPalette_2.png": {"compress/mode": 0},
+	"Bright_Furniture/textures/Demonstration_Textures.png": {"compress/mode": 0},
+	"Fantasy/textures/Skybox_8.png": {"compress/mode": 1, "compress/lossy_quality": 0.85,
+		"process/size_limit": 2048, "mipmaps/generate": true},
+}
+
+
+func _tune_imports() -> void:
+	for path: String in IMPORT_SETTINGS:
+		var settings := ConfigFile.new()
+		if settings.load(Art.ROOT + path + ".import") != OK:
+			continue
+		for key: String in IMPORT_SETTINGS[path]:
+			settings.set_value("params", key, IMPORT_SETTINGS[path][key])
+		settings.save(Art.ROOT + path + ".import")
 
 
 ## The characters' animation library holds 29 clips in a 23 MB file; keeps only
