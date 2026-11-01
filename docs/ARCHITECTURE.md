@@ -54,6 +54,7 @@ scripts/
   ui/level_card.gd            Your level up close: progress, what's coming, ways to earn XP, Star Boost
   ui/level_up_card.gd         The level-up celebration, with confetti
   ui/admin_console.gd         Maker-only command box (` key) that grants currency, membership and XP
+  ui/admin_panel.gd           The same admin commands as buttons, from the Help card (for tablets)
   ui/pets_panel.gd            My pets: every kind, yours and the wild ones, with Bring along and Get now
   ui/adopt_card.gd            Meeting a wild pet: name it, make friends, bring it along
   world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
@@ -255,7 +256,9 @@ godot --rendering-method gl_compatibility --path . -s scripts/dev/look_tour.gd -
 real money once payments exist), plus `member_until`, the Unix time a membership runs out. `grant()`,
 `spend()`, `grant_membership()` and `is_member()` are the only ways in, and every change emits
 `wallet_changed`, which the HUD listens to. For now the wallet lives in the device's save, and only the
-admin console (debug builds or `--admin`) grants Stardust and membership. Before real purchases go live,
+admin tools grant Stardust and membership: the console and the Help card's Admin tools, which are on for
+everyone while the game is being made (`AdminConsole.FOR_EVERYONE`; with it off, only debug builds and
+`--admin` get them). Turn that off before real players arrive. Before real purchases go live,
 wallets must move to the game server, which would grant Stardust only after a verified payment receipt;
 a saved file on a player's device can be edited, so it can't be trusted with anything bought.
 

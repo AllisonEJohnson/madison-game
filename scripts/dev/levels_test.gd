@@ -3,8 +3,9 @@ extends Node
 ##   godot --headless --path . -- --host --levels-test
 ## It checks the level curve, what playing is worth (with cooldowns and daily
 ## limits), level-up rewards (given once), gifts, the Star Boost, level-locked
-## shop items and portals, the admin commands, and XP from a real acorn
-## pickup, then puts this device's save back the way it was. Prints one line
+## shop items and portals, the admin commands and the admin tools card
+## (with taps and a hold by touch), and XP from a real acorn pickup, then puts
+## this device's save back the way it was. Prints one line
 ## per check and quits with the number of failures as its exit code.
 
 var _t := 0.0
@@ -40,13 +41,29 @@ func _process(delta: float) -> void:
 		_admin()
 		_fresh()
 		_start_pickup()
-	elif _step == 1 and _t > 2.6:
+		# Taps and holds + on the admin tools by touch, as on a tablet.
+		_world._hud.open_admin()
+		_world._hud._admin.pick("stardust", 10)
+	elif _step == 1 and _t > 2.1:
 		_step = 2
+		_touch_plus(true)
+	elif _step == 2 and _t > 2.2:
+		_step = 3
+		_touch_plus(false)
+		_check("a tap on + steps once (10 to %d)" % _world._hud._admin.picked("stardust"),
+				_world._hud._admin.picked("stardust") == 50)
+		_touch_plus(true)
+	elif _step == 3 and _t > 3.0:
+		_step = 4
+		_check("holding + keeps stepping (to %d)" % _world._hud._admin.picked("stardust"),
+				_world._hud._admin.picked("stardust") >= 1000)
+		_touch_plus(false)
+		_world._hud._show_only(null)
 		_check_pickup()
 		# A level-up shows its card once nothing else is open.
 		Progress.add_xp(Levels.xp_to_next(1), false)
-	elif _step == 2 and _t > 2.9:
-		_step = 3
+	elif _step == 4 and _t > 3.3:
+		_step = 5
 		_check("the level-up card shows", _world._hud._level_up.visible)
 		_finish()
 
@@ -174,22 +191,72 @@ func _shop_and_portals() -> void:
 
 
 func _admin() -> void:
-	var console := AdminConsole.new()
-	add_child(console)
-	console.run(PackedStringArray(["level", "4"]))
+	AdminConsole.run(PackedStringArray(["level", "4"]))
 	_check("admin: level 4", Progress.level() == 4)
-	console.run(PackedStringArray(["xp", "-10000"]))
+	AdminConsole.run(PackedStringArray(["xp", "-10000"]))
 	_check("admin: xp -10000 goes back to level 1", Progress.level() == 1 and Progress.xp() == 0)
-	console.run(PackedStringArray(["xp", "60"]))
+	AdminConsole.run(PackedStringArray(["xp", "60"]))
 	_check("admin: xp 60 gives exactly 60", Progress.xp() == 60)
-	_check("admin: level 99 is refused", console.run(PackedStringArray(["level", "99"])).begins_with("Give")
+	_check("admin: level 99 is refused", AdminConsole.run(PackedStringArray(["level", "99"])).begins_with("Give")
 			and Progress.xp() == 60)
-	console.run(PackedStringArray(["boost", "15"]))
+	AdminConsole.run(PackedStringArray(["boost", "15"]))
 	_check("admin: boost 15", absi(Progress.boost_seconds_left() - 15 * 60) <= 2)
-	console.run(PackedStringArray(["level", "reset"]))
+	AdminConsole.run(PackedStringArray(["level", "reset"]))
 	_check("admin: level reset", Progress.xp() == 0 and Progress.boost_seconds_left() == 0
 			and int(GameState.profile["rewarded_level"]) == 1)
-	console.queue_free()
+	_admin_panel()
+
+
+## The admin tools card from the Help card runs the same commands by button.
+func _admin_panel() -> void:
+	var hud: Hud = _world._hud
+	_check("the Help card has an Admin tools button", not hud._help.find_children("*", "Button", true, false)
+			.filter(func(b): return b.text == "Admin tools").is_empty())
+	hud.open_admin()
+	var panel: AdminPanel = hud._admin
+	_check("the admin tools open", panel.visible)
+	_check("the level picker starts at your level", panel.picked("level") == Progress.level())
+	_press(panel, "Stardust", "Give")
+	_check("admin tools: Give 100 Stardust", GameState.balance("stardust") == 100)
+	panel._step("stardust", 1)
+	_press(panel, "Stardust", "Take")
+	_check("admin tools: - and + step the number, Take 500 leaves 0", panel.picked("stardust") == 500
+			and GameState.balance("stardust") == 0)
+	panel.pick("level", 7)
+	_press(panel, "Level", "Set")
+	_check("admin tools: Set level 7", Progress.level() == 7)
+	_press(panel, "Level", "Start over")
+	_check("admin tools: Start over waits for a second tap", Progress.level() == 7)
+	_press(panel, "Level", "Sure?")
+	_check("admin tools: the second tap starts over", Progress.level() == 1)
+	_press(panel, "Star Boost", "Give")
+	_check("admin tools: Give a 30 minute boost", absi(Progress.boost_seconds_left() - 30 * 60) <= 2)
+	_press(panel, "Star Boost", "End")
+	_check("admin tools: End the boost", Progress.boost_seconds_left() == 0)
+	hud._show_only(null)
+	hud._pending_levels.clear()
+
+
+## Puts a finger on (or lifts it off) the Stardust tile's + button.
+func _touch_plus(down: bool) -> void:
+	var plus: Button = _world._hud._admin.find_children("*", "Button", true, false).filter(
+			func(b): return b.tooltip_text == "More")[0]
+	var touch := InputEventScreenTouch.new()
+	touch.index = 0
+	touch.position = get_viewport().get_final_transform() * plus.get_global_rect().get_center()
+	touch.pressed = down
+	Input.parse_input_event(touch)
+
+
+## Presses the button with this text on the admin tile with this title.
+func _press(panel: AdminPanel, tile: String, text: String) -> void:
+	for well in panel.find_children("*", "PanelContainer", true, false):
+		var titles := well.find_children("*", "Label", true, false).filter(func(l): return l.text == tile)
+		var buttons := well.find_children("*", "Button", true, false).filter(func(b): return b.text == text)
+		if not titles.is_empty() and not buttons.is_empty():
+			buttons[0].pressed.emit()
+			return
+	_check("found %s on the %s tile" % [text, tile], false)
 
 
 func _start_pickup() -> void:

@@ -14,7 +14,8 @@ extends Node
 ## the level card), "levelup:<level>" (shows that level's level-up card) and
 ## "camera:<x>/<y>/<z>/<look x>/<look y>/<look z>" (a free camera, for views from above); "nohud"
 ## hides the interface; "closeadmin" closes the admin console; "sky[:<yaw>[/<pitch>/<distance>]]" goes
-## up to the Sky Garden.
+## up to the Sky Garden. "adminpanel" opens the admin tools from the Help card, and
+## "adminpick:<tile>/<number>" picks a number on one of its tiles.
 ## For homes: "homes[:<homes|rooms>]" (opens the Homes window), "homepick:<shop key>" (shows a home
 ## or room up close), "visit:<home type>" (moves into a home you own and goes inside; "admin:unlock all"
 ## first owns them all), "outside[:<door>]" (walks back out to town), "decorate" (starts decorating,
@@ -157,6 +158,10 @@ func _ui_step(step: String) -> void:
 			scene._leave_home(int(arg) if arg != "" else 0)
 		"levels":
 			hud.open_level_card()
+		"adminpanel":
+			hud.open_admin()
+		"adminpick":
+			hud._admin.pick(arg.get_slice("/", 0), int(arg.get_slice("/", 1)))
 		"levelup":
 			var level := int(arg)
 			hud._pending_levels.clear()
