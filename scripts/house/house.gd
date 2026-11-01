@@ -14,8 +14,10 @@ signal door_entered(player: Player, index: int)
 const PLOT_SIZE := HomeCatalog.PLOT
 ## Never more pieces than this in one home, whatever its rooms allow.
 const MAX_ITEMS := 200
-## How far from a door you stand after walking through it.
+## How far from a door you stand after walking through it: inside, and
+## outside at most (less where something stands close in front).
 const DOOR_STEP := 1.3
+const DOOR_STEP_OUT := 2.2
 
 ## The home ("" for none) and the add-ons built.
 var home_type := ""
@@ -37,9 +39,9 @@ func _init() -> void:
 	_items_root = Node3D.new()
 	_items_root.name = "Items"
 	add_child(_items_root)
-	# A wide lawn to stand on all around, so the home doesn't float in the sky.
-	MeshUtil.box(self, Vector3(PLOT_SIZE, 0.02, PLOT_SIZE), Color("7fc46a"), Vector3(0, 0.01, 0))
-	MeshUtil.box(self, Vector3(90, 0.02, 90), Color("6fb35c"), Vector3(0, -0.005, 0))
+	# A wide lawn of town's grass (see Surfaces) to stand on all around, so the
+	# home doesn't float in the sky.
+	Surfaces.ground(MeshUtil.box(self, Vector3(90, 0.02, 90), Color("6fb35c"), Vector3(0, -0.005, 0)), Surfaces.TOWN_GROUND)
 	MeshUtil.collider(self, Vector3(90, 1, 90), Vector3(0, -0.5, 0))
 
 
@@ -244,11 +246,23 @@ func _rebuild() -> void:
 ## out to the yard, "kind": "door" or "gate"}, in the home's local space.
 static func doorways(type: String, addon_ids: Array) -> Array:
 	var out := []
+	var taken := HomeCatalog.room_cells_built(type, addon_ids)
+	for d in HomeCatalog.info(type).get("decor", []):
+		var cells: Array = d["cells"]
+		for x in range(cells[0], cells[0] + cells[2]):
+			for z in range(cells[1], cells[1] + cells[3]):
+				taken[Vector2i(x, z)] = true
 	for e in HomeCatalog.entrances(type, addon_ids):
 		var step: Vector2i = HomeCatalog.STEPS[e["side"]]
 		var dir := Vector3(step.x, 0, step.y)
 		var center := Vector3(e["x"] + 0.5 - PLOT_SIZE / 2.0, 0, e["z"] + 0.5 - PLOT_SIZE / 2.0)
-		out.append({"plane": center + dir * 0.5, "out": dir, "kind": e["kind"]})
+		# Open meters in front of the door (the yard past the plan is open).
+		var clear := 0
+		var cell := Vector2i(e["x"], e["z"]) + step
+		while clear < 3 and not taken.has(cell):
+			clear += 1
+			cell += step
+		out.append({"plane": center + dir * 0.5, "out": dir, "kind": e["kind"], "clear": clear})
 	return out
 
 
@@ -282,7 +296,10 @@ static func door_spot(node: Node3D, doors: Array, index: int, out: bool) -> Dict
 		return {"position": node.to_global(Vector3(0, 0.5, PLOT_SIZE / 2.0 + 1.5)), "yaw": node.global_rotation.y}
 	var d: Dictionary = doors[clampi(index, 0, doors.size() - 1)]
 	var dir: Vector3 = d["out"] if out else -d["out"]
-	var spot: Vector3 = d["plane"] + dir * DOOR_STEP
+	# Outside, a step further where there's room, so the camera has space
+	# behind you before it meets the home.
+	var step := clampf(float(d.get("clear", 0)) - 0.6, DOOR_STEP, DOOR_STEP_OUT) if out else DOOR_STEP
+	var spot: Vector3 = d["plane"] + dir * step
 	var facing := node.global_basis * dir
 	# A camera yaw of 0 looks toward -Z.
 	return {"position": node.to_global(spot + Vector3(0, 0.5, 0)), "yaw": atan2(-facing.x, -facing.z)}

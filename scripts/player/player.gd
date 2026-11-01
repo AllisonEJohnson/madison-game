@@ -231,6 +231,14 @@ func set_camera_yaw(value: float) -> void:
 	_yaw = value
 
 
+## Turns the camera to `value` and the player with it, so you see their back
+## (walking forward goes that way).
+func face(value: float) -> void:
+	set_camera_yaw(value)
+	_model.rotation.y = value + PI
+	sync_yaw = _model.rotation.y
+
+
 ## Tilts and pulls back the camera, within the same limits as the mouse.
 func set_camera_view(pitch: float, distance: float) -> void:
 	_pitch = clampf(pitch, -1.2, 0.3)

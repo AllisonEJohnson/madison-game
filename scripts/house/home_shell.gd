@@ -64,10 +64,10 @@ static func exterior(type: String, addon_ids: Array, solid := true) -> Node3D:
 			_floor(root, rect, MeshUtil.hex(f["color"]), true)
 		elif f["tent"]:
 			# A tent's canvas roof is the color of its trim, so it reads as a tent.
-			_roof(root, rect, wall.darkened(0.06), trim.lightened(0.3), height, 1.4, false)
+			_roof(root, rect, wall.darkened(0.06), trim.lightened(0.3), height, 1.4, false, solid)
 			_flags(root, rect, trim, height, minf(1.4, (float(mini(rect[2], rect[3])) + WALL) * 0.35))
 		else:
-			_roof(root, rect, wall, roof, height, 1.5, home.get("roof_spots", false))
+			_roof(root, rect, wall, roof, height, 1.5, home.get("roof_spots", false), solid)
 	_walk(root, home, p["walk"])
 	_edges(root, type, p["edges"].filter(func(e): return e["outside"]), solid, true)
 	for d in p["decor"]:
@@ -305,7 +305,7 @@ static func _gate(piece: Node3D, wood: Color, solid: bool) -> void:
 ## slabs that overhang a little, and wall-colored triangles closing each end.
 ## `spots` dots it with white, like a toadstool's cap.
 static func _roof(root: Node3D, rect: Array, gable: Color, color: Color, height: float, max_rise: float,
-		spots: bool) -> void:
+		spots: bool, solid: bool) -> void:
 	var along_x: bool = rect[2] >= rect[3]
 	var length := float(rect[2] if along_x else rect[3]) + WALL
 	var span := float(rect[3] if along_x else rect[2]) + WALL
@@ -332,6 +332,15 @@ static func _roof(root: Node3D, rect: Array, gable: Color, color: Color, height:
 				MeshUtil.sphere(root, 0.24, Color("fff6ea"), base + turn * at, Vector3(1, 0.35, 1))
 	MeshUtil.box(root, Vector3(length + 0.35, 0.09, 0.18), color.darkened(0.2), base + Vector3(0, rise + 0.04, 0),
 			Vector3(0, rad_to_deg(yaw), 0))
+	# A block from just under the eaves to the ridge, reaching past the eaves,
+	# so the camera stops in front of it instead of tucking under the eaves or
+	# swinging into the closed home when you stand by a wall. It's above
+	# everyone's heads.
+	if solid:
+		var low := height - 0.3
+		var top := base.y + rise
+		var block := Vector3(length + 1.0, top - low, span + 1.0) if along_x else Vector3(span + 1.0, top - low, length + 1.0)
+		MeshUtil.collider(root, block, Vector3(base.x, (low + top) / 2.0, base.z))
 
 
 ## A tent's top: a ridge pole along its long side, held up over the middle of

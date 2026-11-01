@@ -392,7 +392,7 @@ func _enter_home(plot: int, door: int) -> void:
 	var spot := inside.arrival(door)
 	# A little apart, so friends coming in together don't land on each other.
 	local_player.teleport(spot["position"] + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)))
-	local_player.set_camera_yaw(spot["yaw"])
+	local_player.face(spot["yaw"])
 	_door_time = _now()
 	var name := HomeCatalog.home_name(inside.home_type)
 	_hud.toast(("Welcome home!" if mine else "Welcome to %s's %s!" % [player_names.get(owner_id, "a friend"), name])
@@ -411,7 +411,7 @@ func _leave_home(door: int) -> void:
 			else {"position": plots[plot].front(), "yaw": plots[plot].global_rotation.y}
 	_close_inside()
 	local_player.teleport(spot["position"])
-	local_player.set_camera_yaw(spot["yaw"])
+	local_player.face(spot["yaw"])
 	_door_time = _now()
 
 

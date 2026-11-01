@@ -29,7 +29,7 @@ var _sign: Label3D
 
 
 func _init() -> void:
-	MeshUtil.box(self, Vector3(LOT, 0.02, LOT), Color("7fc46a"), Vector3(0, 0.01, 0))
+	# Town's grass shows through; a low curb marks the lot.
 	for i in 4:
 		var edge := Node3D.new()
 		edge.rotation_degrees.y = 90 * i
