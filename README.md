@@ -148,4 +148,8 @@ godot --path . -- --shot-ui=tab:3 --screenshot=/tmp/clothes.png
 godot --path . -- --host --shot-build --shot-ui=category:living --screenshot=/tmp/living.png
 godot --path . -- --host --shot-build --shot-ui=stress --screenshot=/tmp/stress.png
 godot --path . -- --host --shot-ui=shop:clothes,shopcat:hats --screenshot=/tmp/shop.png
+
+# The same five views for comparing lighting changes; add --rendering-method gl_compatibility
+# for the browser's renderer (see "The look" in docs/ARCHITECTURE.md)
+godot --path . -s scripts/dev/look_tour.gd -- --host --tour=/tmp/look
 ```

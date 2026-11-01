@@ -60,20 +60,22 @@ static func art_paths() -> Array:
 
 
 static func build(ground: Node3D) -> void:
-	MeshUtil.box(ground, Vector3(140, 1, 140), Color("4f9442"), Vector3(0, -0.5, 0))
+	var grass := MeshUtil.box(ground, Vector3(140, 1, 140), Color("4f9442"), Vector3(0, -0.5, 0))
 	MeshUtil.collider(ground, Vector3(140, 1, 140), Vector3(0, -0.5, 0))
-	# Roads in front of each row of plots, and one through the plaza.
-	var road := Color("c2b08a")
+	# Roads in front of each row of plots, and one through the plaza, worn
+	# into the grass (see Surfaces).
+	var roads := []
 	for z in [-15.5, 15.5]:
-		MeshUtil.box(ground, Vector3(74, 0.02, 3.5), road, Vector3(0, 0.01, z))
-	MeshUtil.box(ground, Vector3(3.5, 0.02, 31), road, Vector3(0, 0.01, 0))
+		roads.append(Surfaces.strip(Vector3(74, 0, 3.5), Vector3(0, 0, z)))
+	roads.append(Surfaces.strip(Vector3(3.5, 0, 31), Vector3.ZERO))
 	# A short path west from the plaza to the portal.
-	MeshUtil.box(ground, Vector3(absf(GLADE_PORTAL.x) - 6, 0.02, 3.5), road, Vector3((GLADE_PORTAL.x - 6) / 2, 0.01, 0))
+	roads.append(Surfaces.strip(Vector3(absf(GLADE_PORTAL.x) - 6, 0, 3.5), Vector3((GLADE_PORTAL.x - 6) / 2, 0, 0)))
+	Surfaces.ground(grass, Surfaces.TOWN_GROUND, roads)
 	# Plaza with a fountain.
-	MeshUtil.cylinder(ground, 9, 9, 0.04, Color("d6bf96"), Vector3(0, 0.02, 0))
-	MeshUtil.cylinder(ground, 3.2, 3.4, 0.6, Color("b0a898"), Vector3(0, 0.3, 0))
-	MeshUtil.cylinder(ground, 2.9, 2.9, 0.62, Color(0.35, 0.65, 0.95, 0.85), Vector3(0, 0.32, 0))
-	MeshUtil.cylinder(ground, 0.35, 0.5, 1.8, Color("b0a898"), Vector3(0, 0.9, 0))
+	Surfaces.paving(MeshUtil.cylinder(ground, 9, 9, 0.04, Color("d6bf96"), Vector3(0, 0.02, 0)), 9, Surfaces.TOWN_PAVING)
+	MeshUtil.cylinder(ground, 3.2, 3.4, 0.6, Color("cdbfa9"), Vector3(0, 0.3, 0))
+	Surfaces.water(MeshUtil.cylinder(ground, 2.9, 2.9, 0.62, Color(0.35, 0.65, 0.95, 0.85), Vector3(0, 0.32, 0)), 2.9)
+	MeshUtil.cylinder(ground, 0.35, 0.5, 1.8, Color("cdbfa9"), Vector3(0, 0.9, 0))
 	MeshUtil.sphere(ground, 0.5, Color(0.45, 0.75, 1.0, 0.8), Vector3(0, 2.0, 0))
 	var fountain_body := StaticBody3D.new()
 	var shape := CollisionShape3D.new()
