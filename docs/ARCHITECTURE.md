@@ -55,6 +55,10 @@ scripts/
   ui/pets_panel.gd            My pets: every kind, yours and the wild ones, with Bring along and Get now
   ui/adopt_card.gd            Meeting a wild pet: name it, make friends, bring it along
   world/scenery.gd            Town ground, roads, plaza, trees, bushes, rocks, grass and flowers
+  world/surfaces.gd           Materials for grass with worn paths, paved plazas and pools (see "The look")
+  world/ground.gdshader       Painted grass with ragged dirt paths, all from position (no textures)
+  world/paving.gdshader       Rings of paving stones for round plazas
+  world/water.gdshader        Rippling water for the fountain and the glade's pond
   world/fantasy_land.gd       Starfall Glade, the fantasy land
   world/portal.gd             Walk-in portal between lands (locked until a level when its place needs one)
   world/sky_garden.gd         The Sky Garden, a floating island above Starfall Glade that opens at level 5
@@ -64,9 +68,10 @@ scripts/
   world/shop_stall.gd         The town's shop stall
   util/safe_names.gd          Word lists for names, pet names and chat phrases
   util/mesh_util.gd           Primitive-mesh helpers
-  util/lighting.gd            Shared sky, sunlight and color grading (world and menu preview)
+  util/lighting.gd            Shared sky, sunlight and color grading (world, menu preview, item pictures)
   util/art.gd                 Loads licensed models from itHappy/, or returns null when they're missing
-  dev/                        Smoke test, screenshot helpers, and prune_art.gd for the web build
+  dev/                        Smoke test, screenshot helpers (look_tour.gd for lighting work), and prune_art.gd
+                              for the web build
 ```
 
 ## Data model
@@ -179,7 +184,38 @@ castle door, where the glade's north path ends, and opens at level 5. Golden aco
 as often as elsewhere. A fence and an invisible wall around the edge keep players from falling off.
 
 The Fantasy pack's own water shader reads the depth buffer, which browsers handle poorly, so the glade's
-pond uses a small shader of its own.
+pond (and the town fountain) use a small shader of their own, `world/water.gdshader`.
+
+## The look
+
+`Lighting` sets up every 3D view the same way, following the ithappy packs' own preview scenes:
+filmic tone mapping, a warm sun, a fixed sky-blue ambient color for soft blue shade, light glow, and
+the Fantasy pack's painted cloud sky (a plain gradient sky without the art). Each land picks its own
+colors from `Lighting.LANDS`.
+
+Browsers use the **Compatibility** renderer. For the same values it matches Forward+, except for one
+engine bug (Godot issue 90259): a shadow-casting sun's light is added to the rest of the lighting after
+both are converted to screen colors, which washes sunlit places out to almost white. `Lighting.sun()`
+scales the sun by `COMPAT_SUN_SCALE` there, found by comparing the same views in both renderers.
+Light taken from the sky (ambient source "sky") also differs between the renderers, so ambient light
+is a fixed color.
+
+The big flat surfaces use `Surfaces`: `ground.gdshader` paints grass with soft patches and fine
+mottle, and wears paths into it from a list of strips and circles (they merge where they cross, with
+ragged grassy edges); `paving.gdshader` lays rings of stones on round plazas. Both work from position,
+so they cost nothing to download.
+
+`prune_art.gd` also adjusts a few import settings for the web build (`IMPORT_SETTINGS`): the packs'
+palette textures are kept lossless (compression added grain to their gradients, and lossless is
+smaller), and the 4096 x 2048 sky is imported at 2048 x 1024, lossy.
+
+To compare lighting changes, `scripts/dev/look_tour.gd` takes the same five views in one run, with
+optional overrides (`--tour-set=env.tonemap_mode=2;sun.light_energy=1.2`). Run it once per renderer:
+
+```sh
+godot --path . -s scripts/dev/look_tour.gd -- --host --tour=/tmp/look --tour-tag=-desktop
+godot --rendering-method gl_compatibility --path . -s scripts/dev/look_tour.gd -- --host --tour=/tmp/look --tour-tag=-web
+```
 
 ## Wallet and membership
 

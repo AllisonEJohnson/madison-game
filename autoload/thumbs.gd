@@ -216,17 +216,17 @@ func _make_stage() -> Dictionary:
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("e8f0ff")
-	env.ambient_light_energy = 0.55 if Lighting.is_compatibility() else 0.9
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.ambient_light_energy = Lighting.INDOOR_AMBIENT
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.3
+	env.adjustment_saturation = 1.08
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	vp.add_child(world_env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-40, 25, 0)
-	sun.light_color = Lighting.SUN_COLOR
-	sun.light_energy = Lighting.COMPAT_SUN_ENERGY if Lighting.is_compatibility() else Lighting.SUN_ENERGY
+	sun.light_color = Lighting.LANDS["town"]["sun"]
+	sun.light_energy = Lighting.SUN_ENERGY
 	vp.add_child(sun)
 	var holder := Node3D.new()
 	vp.add_child(holder)
