@@ -103,6 +103,8 @@ func _handle_command_line() -> void:
 		get_tree().root.add_child(load("res://scripts/dev/economy_test.gd").new())
 	if "--levels-test" in args:
 		get_tree().root.add_child(load("res://scripts/dev/levels_test.gd").new())
+	if "--homes-test" in args:
+		get_tree().root.add_child(load("res://scripts/dev/homes_test.gd").new())
 	for arg in args:
 		if arg.begins_with("--screenshot="):
 			var shot: Node = load("res://scripts/dev/screenshot.gd").new()

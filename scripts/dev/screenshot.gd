@@ -15,6 +15,10 @@ extends Node
 ## "camera:<x>/<y>/<z>/<look x>/<look y>/<look z>" (a free camera, for views from above); "nohud"
 ## hides the interface; "closeadmin" closes the admin console; "sky[:<yaw>[/<pitch>/<distance>]]" goes
 ## up to the Sky Garden.
+## For homes: "homes[:<homes|rooms>]" (opens the Homes window), "homepick:<shop key>" (shows a home
+## or room up close), "visit:<home type>" (moves into a home you own and goes inside; "admin:unlock all"
+## first owns them all), "outside[:<door>]" (walks back out to town), "decorate" (starts decorating,
+## looking down into the home) and "plans" (shows where rooms can be added, as when decorating).
 ## For pets: "wild:<land>[/<n>]" (stands by a wild pet), "meet" (says hi), "befriend" (makes
 ## friends), "pets" (opens My pets), "petpick:<species>", "petfilter:<id>" and "petbring:<species>"
 ## (brings one of your pets along).
@@ -42,9 +46,9 @@ func _process(delta: float) -> void:
 		# Stands in the middle of the home and looks down over the walls.
 		var world := get_tree().current_scene
 		var player: Player = world.get("local_player") if world else null
-		var plot: int = world.player_plots.get(player.peer_id, -1) if player else -1
-		if plot >= 0:
-			player.teleport(world.houses[plot].to_global(Vector3(0, 0.5, 1.5)))
+		var inside: House = world.get("_inside") if world else null
+		if player and inside:
+			player.teleport(inside.to_global(Vector3(0, 0.5, 1.5)))
 			player.set_camera_view(-1.0, 8.0)
 	if _t > 2.5 and _t > _hold_until and not ui_steps.is_empty():
 		_ui_step(ui_steps.pop_front())
@@ -134,6 +138,23 @@ func _ui_step(step: String) -> void:
 		"nohud":
 			hud.visible = false
 			hud._pending_levels.clear()
+		"homes":
+			hud.open_homes(arg)
+		"homepick":
+			hud._homes.pick(arg)
+		"visit":
+			scene._visit_home(arg)
+		"decorate":
+			# Starts decorating and looks down into the home, like --shot-build.
+			scene._toggle_build()
+			var house: House = scene._own_inside()
+			scene.local_player.teleport(house.to_global(Vector3(0, 0.5, 1.5)))
+			scene.local_player.set_camera_view(-1.0, 8.0)
+		"plans":
+			var house: House = scene._own_inside()
+			house.set_decorating(true, Homes.plan_labels(house.home_type))
+		"outside":
+			scene._leave_home(int(arg) if arg != "" else 0)
 		"levels":
 			hud.open_level_card()
 		"levelup":

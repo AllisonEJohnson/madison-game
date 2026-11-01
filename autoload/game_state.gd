@@ -39,7 +39,9 @@ func default_profile() -> Dictionary:
 		"name_parts": SafeNames.random_name_parts(rng),
 		"avatar": AvatarBuilder.default_config(),
 		"pet": PetBuilder.default_config(),
-		"house": FurnitureCatalog.starter_layout(),
+		# The furniture in each home lived in, and the one lived in now (see Homes).
+		"homes": HomeCatalog.new_save()["homes"],
+		"home": HomeCatalog.STARTER,
 		# Build-mode keys ("sofa:3"). Only this device sees them.
 		"favorites": [],
 		"recent": [],
@@ -71,8 +73,7 @@ func load_profile() -> void:
 		pet["fullness"] = float(data["pet"].get("fullness", 80.0))
 		pet["happiness"] = float(data["pet"].get("happiness", 80.0))
 	profile["pet"] = pet
-	if data.get("house") is Array:
-		profile["house"] = House.sanitize_layout(data["house"])
+	profile.merge(HomeCatalog.clean_save(data), true)
 	profile["favorites"] = _clean_keys(data.get("favorites"), MAX_FAVORITES)
 	profile["recent"] = _clean_keys(data.get("recent"), MAX_RECENT)
 	for currency in CURRENCIES:
@@ -83,7 +84,7 @@ func load_profile() -> void:
 		profile["owned"] = _clean_owned(data.get("owned"))
 	else:
 		# Saved before the shop: keep everything already worn or placed.
-		profile["owned"] = ShopCatalog.priced_keys_in(profile["house"], profile["avatar"])
+		profile["owned"] = ShopCatalog.priced_keys_in(HomeCatalog.all_items(profile), profile["avatar"])
 	profile["chase_best"] = _clean_amount(data.get("chase_best"))
 	profile.merge(Levels.clean_save(data), true)
 
@@ -155,6 +156,9 @@ func buy(key: String) -> bool:
 	var p := ShopCatalog.price(key)
 	if p.is_empty() or owns(key) or not ShopCatalog.is_item(key) or ShopCatalog.level_locked(key):
 		return false
+	# A room can only be added to a home you own.
+	if not owns(HomeCatalog.requires(key)):
+		return false
 	if not spend(p["currency"], int(p["amount"])):
 		return false
 	unlock([key])
@@ -171,9 +175,11 @@ func unlock(keys: Array) -> void:
 	owned_changed.emit()
 
 
-## Takes back everything bought, except what is worn or placed right now.
+## Takes back everything bought, except what is worn or placed right now and
+## the home lived in.
 func reset_owned() -> void:
-	profile["owned"] = ShopCatalog.priced_keys_in(profile["house"], profile["avatar"])
+	var home_keys := Homes.keys_in_use()
+	profile["owned"] = ShopCatalog.priced_keys_in(HomeCatalog.all_items(profile), profile["avatar"]) + home_keys
 	save_profile()
 	owned_changed.emit()
 
@@ -253,7 +259,7 @@ func public_profile() -> Dictionary:
 		"name_parts": profile["name_parts"],
 		"avatar": profile["avatar"],
 		"pet": PetBuilder.sanitize(profile["pet"]),
-		"house": profile["house"],
+		"home": Homes.active(),
 	}
 
 

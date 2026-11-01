@@ -1,44 +1,107 @@
 class_name House
 extends Node3D
-## One player's plot: a square grid of cells holding floors, walls and objects.
-## The node sits at the plot center; cell (0, 0) is the plot's local -X/-Z corner.
-## Layout items are {"id", "x", "z", "r" rotation, "c" paint color, "s" style}.
+## The inside of a home: its rooms without roofs (see HomeCatalog and
+## HomeShell), the furniture placed in them, and a lawn around it. A House only
+## exists while you are inside: walking in through a front door builds it in
+## a space of its own, far from town, and walking back out through one of its
+## entrances removes it. Town only ever shows homes from outside (see HomePlot).
+## Cell (0, 0) is the home's local -X/-Z corner. Furniture is a list of
+## {"id", "x", "z", "r" rotation, "c" paint color, "s" style}.
 
-const PLOT_SIZE := 12
-const MAX_ITEMS := 600
+## The local player walked into entrance `index` (see HomeCatalog.entrances).
+signal door_entered(player: Player, index: int)
 
-var owner_id := 0
+const PLOT_SIZE := HomeCatalog.PLOT
+## Never more pieces than this in one home, whatever its rooms allow.
+const MAX_ITEMS := 200
+## How far from a door you stand after walking through it: inside, and
+## outside at most (less where something stands close in front).
+const DOOR_STEP := 1.3
+const DOOR_STEP_OUT := 2.2
+
+## The home ("" for none) and the add-ons built.
+var home_type := ""
+var rooms: Array = []
+## The furniture placed in it.
 var layout: Array = []
+## How many pieces of furniture this home holds (see HomeCatalog.capacity).
+var capacity := 0
+var _blocked := {}
+var _room_cells := {} # Vector2i -> room id: where furniture can go
+var _doors: Array = [] # see doorways()
 var _items_root: Node3D
-var _sign: Label3D
+var _shell: Node3D
+var _door_root: Node3D
+var _plans: Node3D
 
 
 func _init() -> void:
 	_items_root = Node3D.new()
 	_items_root.name = "Items"
 	add_child(_items_root)
-	var lawn := MeshUtil.box(self, Vector3(PLOT_SIZE, 0.02, PLOT_SIZE), Color("7fc46a"), Vector3(0, 0.01, 0))
-	lawn.name = "Lawn"
-	for i in 4:
-		var edge := Node3D.new()
-		edge.rotation_degrees.y = 90 * i
-		add_child(edge)
-		MeshUtil.box(edge, Vector3(PLOT_SIZE, 0.08, 0.15), Color("e9e2cf"), Vector3(0, 0.04, PLOT_SIZE / 2.0))
-	_sign = Label3D.new()
-	_sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_sign.pixel_size = 0.008
-	_sign.outline_size = 12
-	_sign.position = Vector3(0, 3.6, PLOT_SIZE / 2.0)
-	add_child(_sign)
+	# A wide lawn of town's grass (see Surfaces) to stand on all around, so the
+	# home doesn't float in the sky.
+	Surfaces.ground(MeshUtil.box(self, Vector3(90, 0.02, 90), Color("6fb35c"), Vector3(0, -0.005, 0)), Surfaces.TOWN_GROUND)
+	MeshUtil.collider(self, Vector3(90, 1, 90), Vector3(0, -0.5, 0))
 
 
-func set_owner_name(display_name: String) -> void:
-	_sign.text = "%s's Home" % display_name if display_name != "" else "Free plot"
-
-
-func set_layout(new_layout: Variant) -> void:
-	layout = sanitize_layout(new_layout)
+## Shows a home ({"type", "rooms", "items"}, checked first). The rooms are only
+## rebuilt when the home or its add-ons change.
+func set_home(home: Variant) -> void:
+	var clean := HomeCatalog.sanitize(home)
+	if clean["type"] != home_type or clean["rooms"] != rooms or _shell == null:
+		home_type = clean["type"]
+		rooms = clean["rooms"]
+		capacity = HomeCatalog.capacity(home_type, rooms)
+		_blocked = HomeCatalog.blocked(home_type)
+		_room_cells = HomeCatalog.room_cells_built(home_type, rooms)
+		if _shell:
+			_shell.queue_free()
+		_shell = HomeShell.build(home_type, rooms)
+		add_child(_shell)
+		if _door_root:
+			_door_root.queue_free()
+		_doors = doorways(home_type, rooms)
+		_door_root = Node3D.new()
+		_door_root.name = "Doors"
+		add_child(_door_root)
+		add_triggers(_door_root, _doors, func(player, index): door_entered.emit(player, index))
+		# A door sign over each way out.
+		for d in _doors:
+			var icon := Sprite3D.new()
+			icon.texture = UiTheme.icon("door")
+			icon.pixel_size = 0.0035
+			icon.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			icon.shaded = false
+			icon.position = d["plane"] - d["out"] * 0.35 + Vector3(0, 2.45, 0)
+			_door_root.add_child(icon)
+		set_decorating(false)
+	layout = clean["items"]
 	_rebuild()
+
+
+## Where you stand after coming in through entrance `index`, and the camera
+## turn that looks into the room: {"position" (global), "yaw"}.
+func arrival(index: int) -> Dictionary:
+	return door_spot(self, _doors, index, false)
+
+
+## The home as it travels and saves: {"type", "rooms", "items"}.
+func home() -> Dictionary:
+	return {"type": home_type, "rooms": rooms.duplicate(), "items": layout.duplicate(true)}
+
+
+## While its owner decorates: shows where rooms not built yet would go, labeled
+## with `labels` (add-on id -> text), and hides big trees that block the view.
+func set_decorating(on: bool, labels := {}) -> void:
+	if _plans:
+		_plans.queue_free()
+		_plans = null
+	if on and home_type != "":
+		_plans = HomeShell.plans(home_type, rooms, labels)
+		add_child(_plans)
+	if _shell:
+		HomeShell.show_tall_decor(_shell, not on)
 
 
 static func sanitize_layout(data: Variant) -> Array:
@@ -88,14 +151,41 @@ static func _slot_keys(item: Dictionary) -> Array:
 	return keys
 
 
+## True when a piece could go here: in one of the home's rooms, off the decor,
+## and with room left in the home (counting anything it would replace).
+func can_fit(id: String, x: int, z: int, r: int) -> bool:
+	return _fits_plot(id, x, z, r) and _count_after(id, x, z, r) <= capacity
+
+
+## True when the home is too full for this piece (but the spot itself is fine).
+func is_full_for(id: String, x: int, z: int, r: int) -> bool:
+	return _fits_plot(id, x, z, r) and _count_after(id, x, z, r) > capacity
+
+
+func _fits_plot(id: String, x: int, z: int, r: int) -> bool:
+	if not FurnitureCatalog.ITEMS.has(id) or FurnitureCatalog.layer(id) != "object" or home_type == "":
+		return false
+	var item := {"id": id, "x": x, "z": z, "r": posmod(r, 4)}
+	if _slot_keys(item).is_empty():
+		return false
+	for cell in FurnitureCatalog.cells(id, x, z, r):
+		if _blocked.has(cell) or not _room_cells.has(cell):
+			return false
+	return true
+
+
+func _count_after(id: String, x: int, z: int, r: int) -> int:
+	var keys := _slot_keys({"id": id, "x": x, "z": z, "r": posmod(r, 4)})
+	var replaced := layout.filter(func(i): return _slot_keys(i).any(func(k): return k in keys)).size()
+	return layout.size() - replaced + 1
+
+
 func place(id: String, x: int, z: int, r: int, color_hex: String, style := 0) -> bool:
-	if not FurnitureCatalog.ITEMS.has(id):
+	if not can_fit(id, x, z, r):
 		return false
 	var item := {"id": id, "x": x, "z": z, "r": posmod(r, 4), "c": color_hex,
 		"s": clampi(style, 0, maxi(FurnitureCatalog.style_count(id) - 1, 0))}
 	var keys := _slot_keys(item)
-	if keys.is_empty():
-		return false
 	for i in range(layout.size() - 1, -1, -1):
 		if _slot_keys(layout[i]).any(func(k): return k in keys):
 			layout.remove_at(i)
@@ -106,7 +196,7 @@ func place(id: String, x: int, z: int, r: int, color_hex: String, style := 0) ->
 	return true
 
 
-## Removes the furniture on a cell. Walls and floors are part of the house,
+## Removes the furniture on a cell. Walls and floors are part of the home,
 ## so they stay.
 func remove_at(x: int, z: int) -> bool:
 	for i in range(layout.size() - 1, -1, -1):
@@ -146,3 +236,70 @@ func _rebuild() -> void:
 		node.position = item_position(item["id"], item["x"], item["z"], item["r"])
 		node.rotation_degrees.y = 90 * item["r"]
 		_items_root.add_child(node)
+
+
+# --- Doors ------------------------------------------------------------------------
+# The entrances of a home are where you go in and out. The same code puts them
+# on the inside (here) and the outside (HomePlot), in the home's own grid.
+
+## Each entrance as {"plane": the middle of the doorway, "out": the direction
+## out to the yard, "kind": "door" or "gate"}, in the home's local space.
+static func doorways(type: String, addon_ids: Array) -> Array:
+	var out := []
+	var taken := HomeCatalog.room_cells_built(type, addon_ids)
+	for d in HomeCatalog.info(type).get("decor", []):
+		var cells: Array = d["cells"]
+		for x in range(cells[0], cells[0] + cells[2]):
+			for z in range(cells[1], cells[1] + cells[3]):
+				taken[Vector2i(x, z)] = true
+	for e in HomeCatalog.entrances(type, addon_ids):
+		var step: Vector2i = HomeCatalog.STEPS[e["side"]]
+		var dir := Vector3(step.x, 0, step.y)
+		var center := Vector3(e["x"] + 0.5 - PLOT_SIZE / 2.0, 0, e["z"] + 0.5 - PLOT_SIZE / 2.0)
+		# Open meters in front of the door (the yard past the plan is open).
+		var clear := 0
+		var cell := Vector2i(e["x"], e["z"]) + step
+		while clear < 3 and not taken.has(cell):
+			clear += 1
+			cell += step
+		out.append({"plane": center + dir * 0.5, "out": dir, "kind": e["kind"], "clear": clear})
+	return out
+
+
+## Walk-in boxes in each doorway, a little deeper than the door itself so that
+## bumping into it counts. Only the local player's own walk-ins count.
+static func add_triggers(parent: Node3D, doors: Array, on_enter: Callable) -> void:
+	for i in doors.size():
+		var d: Dictionary = doors[i]
+		var area := Area3D.new()
+		area.name = "Door%d" % i
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(0.9, 2.0, 1.0)
+		shape.shape = box
+		shape.position.y = 1.0
+		area.add_child(shape)
+		area.position = d["plane"]
+		if absf(d["out"].x) > 0.5:
+			area.rotation.y = PI / 2.0
+		area.body_entered.connect(func(body):
+			if body is Player and body.is_multiplayer_authority():
+				on_enter.call(body, i))
+		parent.add_child(area)
+
+
+## Where to stand by door `index` and which way to look: outside (`out` true)
+## facing away from the home, or inside facing into the room. `node` is the
+## home's node, for turning local spots into world ones.
+static func door_spot(node: Node3D, doors: Array, index: int, out: bool) -> Dictionary:
+	if doors.is_empty():
+		return {"position": node.to_global(Vector3(0, 0.5, PLOT_SIZE / 2.0 + 1.5)), "yaw": node.global_rotation.y}
+	var d: Dictionary = doors[clampi(index, 0, doors.size() - 1)]
+	var dir: Vector3 = d["out"] if out else -d["out"]
+	# Outside, a step further where there's room, so the camera has space
+	# behind you before it meets the home.
+	var step := clampf(float(d.get("clear", 0)) - 0.6, DOOR_STEP, DOOR_STEP_OUT) if out else DOOR_STEP
+	var spot: Vector3 = d["plane"] + dir * step
+	var facing := node.global_basis * dir
+	# A camera yaw of 0 looks toward -Z.
+	return {"position": node.to_global(spot + Vector3(0, 0.5, 0)), "yaw": atan2(-facing.x, -facing.z)}

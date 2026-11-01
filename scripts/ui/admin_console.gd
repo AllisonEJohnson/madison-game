@@ -116,6 +116,7 @@ func run(words: PackedStringArray) -> String:
 						func(f): return ShopCatalog.furniture_key(f["id"], f["style"]))
 				keys.append_array(ShopCatalog.clothes_for_sale().map(
 						func(c): return ShopCatalog.clothes_key(c["option"], c["index"])))
+				keys.append_array(HomeCatalog.all_keys())
 				GameState.unlock(keys)
 				return "Unlocked %d things. %s" % [keys.size(), _wallet_text()]
 			if arg == "reset":

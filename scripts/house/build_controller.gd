@@ -1,13 +1,16 @@
 class_name BuildController
 extends Node
-## Lets the local player edit their own plot: a ghost preview follows the
-## mouse on the grid, and edits are saved locally and sent to the host.
+## Lets the local player decorate the inside of their own home (`house`, set
+## while they're in it): a ghost preview follows the mouse on the grid, and
+## edits are saved locally and sent to the host.
 
 signal layout_edited(layout: Array)
 ## Sent after a successful placement with the entry key ("sofa:3").
 signal item_placed(key: String)
 ## Sent instead of placing when the picked look hasn't been bought yet.
 signal purchase_needed(id: String, style: int)
+## Sent instead of placing when the home holds all the furniture it can.
+signal home_full
 
 const SEND_DELAY := 0.3
 
@@ -31,6 +34,9 @@ var _send_timer := -1.0
 
 func set_active(on: bool) -> void:
 	active = on and house != null and player != null
+	# While decorating, outlines show where the home could grow.
+	if house:
+		house.set_decorating(active, Homes.plan_labels(house.home_type))
 	_refresh_ghost()
 
 
@@ -97,7 +103,8 @@ func _process(delta: float) -> void:
 	if _send_timer >= 0.0:
 		_send_timer -= delta
 		if _send_timer < 0.0:
-			layout_edited.emit(house.layout.duplicate(true))
+			# From the save, so an edit still goes out if you've just left home.
+			layout_edited.emit(Homes.items(Homes.current()).duplicate(true))
 	if not active or not player.camera:
 		return
 	var mouse := player.get_viewport().get_mouse_position()
@@ -129,6 +136,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					_edited()
 			elif not owns_item():
 				purchase_needed.emit(item_id, item_style)
+			elif house.is_full_for(item_id, _cell.x, _cell.y, item_rotation):
+				home_full.emit()
 			elif house.place(item_id, _cell.x, _cell.y, item_rotation, item_color.to_html(false), item_style):
 				_edited()
 				item_placed.emit("%s:%d" % [item_id, item_style])
@@ -142,6 +151,5 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _edited() -> void:
-	GameState.profile["house"] = house.layout.duplicate(true)
-	GameState.save_profile()
+	Homes.set_items(house.layout)
 	_send_timer = SEND_DELAY

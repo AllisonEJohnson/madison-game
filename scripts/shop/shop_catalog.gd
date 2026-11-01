@@ -101,6 +101,8 @@ static func price(key: String) -> Dictionary:
 			return _furniture_price(parts[1], index)
 		"avatar":
 			return _clothes_price(parts[1], index)
+		"home", "room":
+			return HomeCatalog.price(key)
 	return {}
 
 
@@ -114,6 +116,8 @@ static func level_needed(key: String) -> int:
 	var p := price(key)
 	if p.is_empty() or p["currency"] != ACORNS:
 		return 1
+	if HomeCatalog.is_item(key):
+		return HomeCatalog.level(key)
 	var parts := key.split(":")
 	var rules: Dictionary = FURNITURE if parts[0] == "furniture" else CLOTHES
 	return maxi(int(rules.get(parts[1], {}).get("level", 1)), 1)
@@ -158,6 +162,8 @@ static func is_item(key: String) -> bool:
 			return FurnitureCatalog.ITEMS.has(parts[1]) and index < maxi(FurnitureCatalog.style_count(parts[1]), 1)
 		"avatar":
 			return index < AvatarBuilder.options(parts[1]).size()
+		"home", "room":
+			return HomeCatalog.is_item(key)
 	return false
 
 

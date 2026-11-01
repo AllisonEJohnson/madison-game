@@ -13,7 +13,7 @@ var _missing := 0
 func _init() -> void:
 	var keep := {}
 	for path in FurnitureCatalog.art_paths() + PetBuilder.art_paths() + Scenery.art_paths() + AvatarBuilder.art_paths() \
-			+ FantasyLand.art_paths() + ShopStall.art_paths() + SkyGarden.art_paths():
+			+ FantasyLand.art_paths() + ShopStall.art_paths() + SkyGarden.art_paths() + HomeCatalog.art_paths():
 		_keep(Art.ROOT + path + ".tscn", keep)
 	for path in Lighting.sky_paths():
 		_keep(Art.ROOT + path, keep)

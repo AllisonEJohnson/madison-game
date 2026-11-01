@@ -66,7 +66,7 @@ static func build(ground: Node3D) -> void:
 	# into the grass (see Surfaces).
 	var roads := []
 	for z in [-15.5, 15.5]:
-		roads.append(Surfaces.strip(Vector3(74, 0, 3.5), Vector3(0, 0, z)))
+		roads.append(Surfaces.strip(Vector3(106, 0, 3.5), Vector3(0, 0, z)))
 	roads.append(Surfaces.strip(Vector3(3.5, 0, 31), Vector3.ZERO))
 	# A short path west from the plaza to the portal.
 	roads.append(Surfaces.strip(Vector3(absf(GLADE_PORTAL.x) - 6, 0, 3.5), Vector3((GLADE_PORTAL.x - 6) / 2, 0, 0)))
@@ -150,9 +150,10 @@ static func acorn_spots(count: int) -> Array[Vector3]:
 static func _open_spot(rng: RandomNumberGenerator, plaza_gap: float) -> Vector3:
 	while true:
 		var p := Vector3(rng.randf_range(-66, 66), 0, rng.randf_range(-66, 66))
-		var in_plots := absf(p.x) < 40.0 and absf(p.z) > 11.0 and absf(p.z) < 34.0
+		# The plots are 22 m lots, four on each side of the plaza (see World.plot_center).
+		var in_plots := absf(p.x) < 53.0 and absf(p.z) > 11.0 and absf(p.z) < 42.0
 		var near_center := absf(p.x) < plaza_gap and absf(p.z) < plaza_gap
-		var on_road := absf(p.x) < 40.0 and absf(absf(p.z) - 15.5) < 3.0 or absf(p.x) < 2.5 and absf(p.z) < 16.0 \
+		var on_road := absf(p.x) < 54.0 and absf(absf(p.z) - 15.5) < 3.0 or absf(p.x) < 2.5 and absf(p.z) < 16.0 \
 				or p.x < 0.0 and p.x > GLADE_PORTAL.x - 6.0 and absf(p.z) < 6.0
 		if not (in_plots or near_center or on_road):
 			return p

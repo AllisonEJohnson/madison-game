@@ -4,7 +4,7 @@
 
 ```
 autoload/
-  game_state.gd      Local profile (name, avatar, pet, house, catalog favorites and recents, wallet,
+  game_state.gd      Local profile (name, avatar, pet, homes, catalog favorites and recents, wallet,
                      things bought, membership and level) saved to user://profile.json; input map
   progress.gd        The player's level: XP from playing, level-up rewards, locked places, Star Boost
   net.gd             ENet host/join (solo in the browser), connection status, return-to-menu
@@ -29,7 +29,11 @@ scripts/
   pets/wild_pet.gd            One wild pet: wanders, looks at you, says hi, hops away after making friends
   pets/pet_keeper.gd          The world's side of pets: wild pets, making friends, switching pets online
   house/furniture_catalog.gd  Buildable items: footprints, styles (licensed models) and shape fallbacks
-  house/house.gd              A plot: grid layout, place/remove, validation
+  house/home_catalog.gd       Every home and its rooms as data: plans, prices, capacity, save format
+  house/home_shell.gd         Draws a home from its plan: the inside (no roofs) or the outside (roofs, shut doors)
+  house/home_plot.gd          A lot in town with the outside of its player's home, the signpost and front doors
+  house/homes.gd              The local player's homes: which they own, live in, and their furniture
+  house/house.gd              A home's inside, built only while you're in it: furniture, place/remove, validation
   house/build_controller.gd   Mouse-driven build mode with ghost preview
   player/player.gd            Movement, camera, animation, network sync
   ui/ui_theme.gd              The shared look: palette, fonts, Theme, and button/card/label helpers
@@ -42,6 +46,7 @@ scripts/
   ui/hud.gd                   In-world UI: player and pet cards (with wallet), dock, chat, dialogs, build drawer,
                               shop, the "press E" prompt and Star Chase's banner and result
   ui/shop_panel.gd            The shop window: Home and Clothes sections around a CatalogBrowser
+  ui/homes_panel.gd           The Homes window: homes to buy or move into, and rooms to add
   ui/buy_card.gd              One item up close with its price and a Buy button (shop and creator)
   ui/level_badge.gd           The star and XP bar on the player card
   ui/level_card.gd            Your level up close: progress, what's coming, ways to earn XP, Star Boost
@@ -79,11 +84,14 @@ Everything a player owns is a small JSON-friendly Dictionary of option indices a
 - `pet`: the pet with you, `{"species": "fox", "coat": 0, "name": "Mochi", "color": "...", "accent": "...",
   "collar": "...", "fullness": 80.0, "happiness": 80.0}` (old saves stored a number for the species)
 - `pets`: your other pets, waiting at home, by kind: `{"cat": {...same as pet...}}`
-- `house`: list of `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f", "s": 3}` on a 12×12 grid
+- `homes`: each home owned and its furniture, `{"sprout_cottage": [items], "oak_lookout": [items]}`, where an
+  item is `{"id": "sofa", "x": 4, "z": 6, "r": 1, "c": "e07a5f", "s": 3}` on the plot's 12×12 grid
   (`r` quarter turns, `c` paint color for shape-built items, `s` style for items with models; big
-  items like beds and sofas cover two cells)
+  items like beds and sofas cover two cells). `home` is the one lived in. Rooms added are shop keys in
+  `owned`. An old save's `house` list moves into the Sprout Cottage on load.
 - `name_parts`: `{"adjective": 3, "noun": 7, "number": 42}` → "CozyKoala42"
-- `owned`: shop keys of everything bought, like `"furniture:sofa:3"` and `"avatar:hat:20"`
+- `owned`: shop keys of everything bought, like `"furniture:sofa:3"`, `"avatar:hat:20"`,
+  `"home:oak_lookout:0"` and `"room:sprout_cottage:1"`
 
 Adding a hat or hairstyle from the character pack is one entry in a `CharacterParts` list; a new
 furniture piece is one `FurnitureCatalog` entry. Builders also have a `sanitize()` that clamps any config to valid values.
@@ -292,6 +300,63 @@ other window is open and no Star Chase game is running.
 Like the wallet, XP lives in the device's save for now; a game server should award XP and level rewards
 before levels unlock anything bought with real money.
 
+## Homes
+
+Homes are ready-built: players never build walls, they pick a home, add rooms to it and fill it with
+furniture. Everyone starts in the free **Sprout Cottage**, can own as many homes as they like, and lives in
+one at a time; their plot shows that one, and each home keeps its own furniture, so moving back finds it
+as it was left.
+
+**Outside and inside.** Town only shows homes from outside. Each of the eight plots is a 22 × 22 m lot
+(`HomePlot`) with the home toward the back, a front yard and a path to the street; it draws the home with
+`HomeShell.exterior()`: closed walls, a gable roof over every room (canvas for tents, spotted for Toadstool
+Hollow), shut doors and windows, and empty decks. No furniture or inside is ever built in town. A home's
+**entrances** are its front doors (a room's door that opens onto the yard) and its deck gates
+(`HomeCatalog.entrances()`). Walking into one builds that home's inside (`House`) out at
+`World.HOMES_ORIGIN`, 1.5 km from town, one spot per plot 300 m apart, and moves you there through the
+matching door; walking into an entrance from inside takes you back out to that door in town and frees the
+inside again. While you're inside, both lands are hidden and only players in the same home are shown
+(`World.place_at()`), so each home works like its own instance without any extra networking: everyone's
+position still syncs as usual, and each peer builds only the inside it's in. Anyone can walk into anyone's
+home and see it as its owner left it (live, as they decorate); only the owner can decorate. **Go home**,
+**Decorate** and the Homes window's Move in all take you inside your own home.
+
+**Homes as data.** `HomeCatalog.HOMES` describes each home: colors, wall height, how many things it holds,
+decor (a tree, a campfire, giant mushrooms) and its rooms. A room is a rectangle on the 12×12 plot grid
+with a `door` (an opening to the yard), `windows`, or a `link` (a doorway into the room next to it); a
+`deck` room has railings instead of walls, and a `tent` room a canvas roof. Rooms with a `price` are
+add-ons: `HomeCatalog.plan(type, rooms_built)` turns the rooms built into floors and wall edges (a wall
+between two rooms gets a doorway, and a wall to a room not yet built stays a plain outside wall), and
+`HomeShell.build()` draws its inside. A new home is one `HOMES` entry (with a `roof` color); `homes_test.gd`
+checks every room is on the plot, nothing overlaps, there's a front door, every room can be walked to from
+one, and the starter furniture fits inside the rooms.
+
+| Home | Price | Rooms to add |
+| --- | --- | --- |
+| Sprout Cottage | free | Garden Room (300 Acorns, level 3), Bedroom (450, level 4), Playroom (30 Stardust) |
+| Oak Lookout | 1,500 Acorns, level 6 | Lookout Deck (500, level 6), Loft Bedroom (700, level 7), Reading Nook (35 Stardust) |
+| Sunpatch Safari Camp | 2,500 Acorns, level 9 | Sleeping Tent (600, level 9), Explorer Tent (800, level 10), Lookout Platform (40 Stardust) |
+| Toadstool Hollow | 120 Stardust | Glow Garden (400, level 3), Spore Loft (40 Stardust) |
+
+**Buying.** Homes and rooms are shop keys (`"home:<type>:0"`, `"room:<type>:<n>"`), so `ShopCatalog.price()`,
+`level_needed()`, `GameState.buy()`, price tags and `BuyCard` work for them like for anything else. A room
+can only be bought for a home you own. New homes and rooms show up on the level-up card of the level that
+opens them.
+
+**Room for things.** Furniture goes inside rooms (decks count), never on the lawn. A home holds `capacity`
+things, and each room added holds more. Build mode shows "12 / 40 things" in its banner and says "Your home
+is full! Add a room to fit more." when it is; swapping one piece for another still works. While
+decorating, rooms you could add are drawn around the home as dashed outlines with their name and price, and
+tall decor (the oak) hides so you can see in.
+
+**On screen.** The **Homes** window (`HomesPanel`) opens from the dock, the decorating banner's Rooms
+button, or the signpost by your own plot. Its Homes tab lists every home with a picture of it (yours as
+you have it), and its Rooms tab the rooms of homes you own, each lit up in place. A home you own has
+"Move in" (or "Go home" for the one you live in).
+
+`Homes` (scripts/house/homes.gd) is the only code that reads or changes the saved homes; `HomeCatalog`,
+`HomeShell`, `HomePlot` and `House` don't use autoloads, so the web build's art pruning can load them.
+
 ## Pets
 
 `PetBuilder.SPECIES` lists every kind of pet as data: its name, coats (licensed models with a scale each),
@@ -340,7 +405,10 @@ Listen-server model with Godot's high-level multiplayer API:
    pet along goes to the host like an outfit (`PetKeeper.submit_pet`), which sanitizes it and swaps that
    player's pet on every peer; late joiners get the latest pets when they connect.
 5. House edits are applied locally right away, then sent to the host (debounced), which validates and
-   broadcasts the layout. Late joiners receive the latest layouts on arrival.
+   broadcasts the home lived in: `{type, rooms, items}`. Moving home or adding a room sends it again. Late
+   joiners receive everyone's homes on arrival. The host trusts the rooms a player says they have, like
+   everything else bought, until wallets move to a server. Going inside a home needs no messages at all:
+   it's a move to that home's spot far from town (see "Homes"), and far moves snap instead of gliding.
 6. A changed outfit is sent to the host the same way (`submit_avatar`), which sanitizes it, limits how
    often it changes, and rebuilds that player's avatar on every peer. Late joiners spawn with it.
 
@@ -370,7 +438,8 @@ same spawn and RPC code runs solo. Online play in the browser would need `WebSoc
 ## Roadmap ideas
 
 1. Dedicated headless server + account system + cloud saves.
-2. Change outfits in-world (wardrobe in your house), and visiting other homes with permissions.
+2. Change outfits in-world (wardrobe in your house); home visit settings (open to all, friends only or
+   locked) and inviting friends into homes other than the one on your plot.
 3. Pet tricks, pet beds that pets actually use, more wild pets (and lands for them), more than one pet of a kind.
 4. Real art: swap the primitive builders for imported `.glb` models, keeping the same config format.
 5. More ways to earn: more mini-games and daily tasks.

@@ -128,6 +128,9 @@ func _physics_process(delta: float) -> void:
 	if is_multiplayer_authority():
 		_move_locally(delta)
 	else:
+		# Far jumps (through a door or portal) snap instead of gliding across the map.
+		if position.distance_squared_to(sync_position) > 400.0:
+			position = sync_position
 		position = position.lerp(sync_position, minf(15.0 * delta, 1.0))
 		_model.rotation.y = lerp_angle(_model.rotation.y, sync_yaw, minf(15.0 * delta, 1.0))
 	var speed := Vector2(position.x - _last_pos.x, position.z - _last_pos.z).length() / maxf(delta, 0.0001)
@@ -226,6 +229,14 @@ func camera_yaw() -> float:
 
 func set_camera_yaw(value: float) -> void:
 	_yaw = value
+
+
+## Turns the camera to `value` and the player with it, so you see their back
+## (walking forward goes that way).
+func face(value: float) -> void:
+	set_camera_yaw(value)
+	_model.rotation.y = value + PI
+	sync_yaw = _model.rotation.y
 
 
 ## Tilts and pulls back the camera, within the same limits as the mouse.
